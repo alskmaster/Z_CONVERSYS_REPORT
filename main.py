@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 # ==============================================================================
-# ZABBIX REPORTER - ENTERPRISE EDITION v20.9.3 FINAL (Coleta Modular)
+# ZABBIX REPORTER - ENTERPRISE EDITION v20.9.4 FINAL (Módulos de SLA Corrigidos)
 #
 # Autor: Marcio Bernardo, Conversys IT Solutions
 # Data: 15/08/2025
-# Descrição: Corrigida a lógica de coleta de dados para ser verdadeiramente
-#            modular, buscando apenas os dados dos módulos selecionados pelo
-#            usuário e evitando erros por dados agrupados.
+# Descrição: KPIs de Disponibilidade separados em um módulo próprio e corrigida
+#            a exibição da tabela de disponibilidade que estava faltando.
 # ==============================================================================
 
 # --- Importações Essenciais ---
@@ -581,16 +580,20 @@ class ReportGenerator:
             
             try:
                 html_part = ""
-                if module_type in ['sla', 'top_hosts', 'top_problems']:
+                if module_type in ['sla', 'kpi', 'top_hosts', 'top_problems']:
                     if 'availability_data' not in cached_data:
+                        self._update_status("Coletando dados de disponibilidade...")
                         cached_data['availability_data'], error_msg = self._collect_availability_data(all_hosts, period, sla_goal)
                         if error_msg: return None, error_msg
                     
                     data = cached_data['availability_data']
-                    if module_type == 'sla':
+                    if module_type == 'kpi':
+                        module_data = {'kpis': data['kpis']}
+                        html_part = render_template('modules/kpi.html', title=custom_title, data=module_data)
+
+                    elif module_type == 'sla':
                         df_sla_problems = data['df_sla_problems']
                         module_data = {
-                            'kpis': data['kpis'],
                             'tabela_sla_problemas': self._generate_html_sla_table(df_sla_problems, sla_goal),
                             'total_hosts': len(all_hosts),
                             'hosts_com_falha_sla': df_sla_problems.shape[0]
@@ -598,7 +601,8 @@ class ReportGenerator:
                         html_part = render_template('modules/sla.html', title=custom_title, data=module_data)
                     
                     elif module_type == 'top_hosts':
-                        df_top_downtime = data['df_sla_problems'].sort_values(by='SLA (%)', ascending=True).head(10)
+                        df_sla_problems = data['df_sla_problems']
+                        df_top_downtime = df_sla_problems.sort_values(by='SLA (%)', ascending=True).head(10)
                         df_top_downtime['soma_duracao_segundos'] = df_top_downtime['Tempo Indisponível'].apply(lambda x: pd.to_timedelta(x).total_seconds())
                         df_top_downtime['soma_duracao_horas'] = df_top_downtime['soma_duracao_segundos'] / 3600
                         module_data = { 'grafico': self._generate_chart(df_top_downtime, 'soma_duracao_horas', 'Host', 'Top 10 Hosts com Maior Indisponibilidade', 'Total de Horas Indisponível', system_config.secondary_color) }
@@ -671,7 +675,6 @@ class ReportGenerator:
         self._update_status("Montando o relatório final...")
         merger = PdfWriter()
         
-        # Lógica de montagem de PDF corrigida
         if system_config.report_cover_path and os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], system_config.report_cover_path)):
             try:
                 with open(os.path.join(app.config['UPLOAD_FOLDER'], system_config.report_cover_path), "rb") as f:
@@ -1152,7 +1155,8 @@ def get_available_modules(client_id):
 
     available_modules = []
     if check_key('icmpping'):
-        available_modules.append({'type': 'sla', 'name': 'Disponibilidade (SLA)'})
+        available_modules.append({'type': 'kpi', 'name': 'KPIs de Disponibilidade'})
+        available_modules.append({'type': 'sla', 'name': 'Tabela de Disponibilidade'})
         available_modules.append({'type': 'top_hosts', 'name': 'Top Hosts Indisponíveis'})
         available_modules.append({'type': 'top_problems', 'name': 'Top Incidentes'})
     if check_key('system.cpu.util'):
