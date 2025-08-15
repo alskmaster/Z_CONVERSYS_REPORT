@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 # ==============================================================================
-# ZABBIX REPORTER - ENTERPRISE EDITION v20.9.4 FINAL (Módulos de SLA Corrigidos)
+# ZABBIX REPORTER - ENTERPRISE EDITION v20.9.5 FINAL (Controle de Paginação)
 #
 # Autor: Marcio Bernardo, Conversys IT Solutions
 # Data: 15/08/2025
-# Descrição: KPIs de Disponibilidade separados em um módulo próprio e corrigida
-#            a exibição da tabela de disponibilidade que estava faltando.
+# Descrição: Adicionada opção de "Iniciar em Nova Página" para cada módulo
+#            no construtor de relatórios, dando controle total sobre a paginação.
 # ==============================================================================
 
 # --- Importações Essenciais ---
@@ -340,7 +340,7 @@ class ReportGenerator:
         all_problems = [p for p in all_group_events if p.get('source') == '0' and p.get('object') == '0' and p.get('value') == '1']
         df_top_incidents = self._count_problems_by_host(all_problems, all_hosts).head(10)
         
-        df_sla_problems = df_sla # Alterado para usar todos os dados de SLA
+        df_sla_problems = df_sla
         avg_sla = df_sla['SLA (%)'].mean() if not df_sla.empty else 100.0
         principal_ofensor = df_top_incidents.iloc[0]['Host'] if not df_top_incidents.empty else "Nenhum"
         
@@ -479,7 +479,7 @@ class ReportGenerator:
         for _, row in df.iterrows():
             sla_val = row['SLA (%)']
             classe_css = ''
-            if sla_val < 100.0: # Destaque qualquer valor menor que 100%
+            if sla_val < 100.0:
                 if sla_val < sla_goal:
                     classe_css = 'sla-critico'
                 else:
@@ -578,6 +578,7 @@ class ReportGenerator:
         for module in report_layout:
             module_type = module.get('type')
             custom_title = module.get('title')
+            new_page = module.get('newPage', False)
             
             self._update_status(f"Processando módulo: {module_type}...")
             
@@ -592,7 +593,7 @@ class ReportGenerator:
                     data = cached_data['availability_data']
                     if module_type == 'kpi':
                         module_data = {'kpis': data['kpis']}
-                        html_part = render_template('modules/kpi.html', title=custom_title, data=module_data)
+                        html_part = render_template('modules/kpi.html', title=custom_title, data=module_data, new_page=new_page)
 
                     elif module_type == 'sla':
                         df_sla_problems = data['df_sla_problems']
@@ -601,7 +602,7 @@ class ReportGenerator:
                             'total_hosts': len(all_hosts),
                             'hosts_com_falha_sla': df_sla_problems[df_sla_problems['SLA (%)'] < 100].shape[0]
                         }
-                        html_part = render_template('modules/sla.html', title=custom_title, data=module_data)
+                        html_part = render_template('modules/sla.html', title=custom_title, data=module_data, new_page=new_page)
                     
                     elif module_type == 'top_hosts':
                         df_sla_problems = data['df_sla_problems']
@@ -609,12 +610,12 @@ class ReportGenerator:
                         df_top_downtime['soma_duracao_segundos'] = df_top_downtime['Tempo Indisponível'].apply(lambda x: pd.to_timedelta(x).total_seconds())
                         df_top_downtime['soma_duracao_horas'] = df_top_downtime['soma_duracao_segundos'] / 3600
                         module_data = { 'grafico': self._generate_chart(df_top_downtime, 'soma_duracao_horas', 'Host', 'Top 10 Hosts com Maior Indisponibilidade', 'Total de Horas Indisponível', system_config.secondary_color) }
-                        html_part = render_template('modules/top_hosts.html', title=custom_title, data=module_data)
+                        html_part = render_template('modules/top_hosts.html', title=custom_title, data=module_data, new_page=new_page)
 
                     elif module_type == 'top_problems':
                         df_top_incidents = data['df_top_incidents']
                         module_data = { 'grafico': self._generate_chart(df_top_incidents.assign(Incidente=df_top_incidents['Host'] + ' - ' + df_top_incidents['Problema']), 'Ocorrências', 'Incidente', 'Top 10 Incidentes', 'Número de Ocorrências', system_config.secondary_color) }
-                        html_part = render_template('modules/top_problems.html', title=custom_title, data=module_data)
+                        html_part = render_template('modules/top_problems.html', title=custom_title, data=module_data, new_page=new_page)
 
                 elif module_type == 'cpu':
                     if 'cpu_data' not in cached_data:
@@ -623,7 +624,7 @@ class ReportGenerator:
                     data = cached_data['cpu_data']
                     df_cpu = data['df_cpu']
                     module_data = { 'tabela': df_cpu.to_html(classes='table', index=False, float_format='%.2f'), 'grafico': self._generate_multi_bar_chart(df_cpu, 'Ocupação de CPU (%)', 'Uso de CPU (%)', ['#ff9999', '#ff4d4d', '#b30000']) }
-                    html_part = render_template('modules/cpu.html', title=custom_title, data=module_data)
+                    html_part = render_template('modules/cpu.html', title=custom_title, data=module_data, new_page=new_page)
                 
                 elif module_type == 'mem':
                     if 'mem_data' not in cached_data:
@@ -632,7 +633,7 @@ class ReportGenerator:
                     data = cached_data['mem_data']
                     df_mem = data['df_mem']
                     module_data = { 'tabela': df_mem.to_html(classes='table', index=False, float_format='%.2f'), 'grafico': self._generate_multi_bar_chart(df_mem, 'Ocupação de Memória (%)', 'Uso de Memória (%)', ['#99ccff', '#4da6ff', '#0059b3']) }
-                    html_part = render_template('modules/mem.html', title=custom_title, data=module_data)
+                    html_part = render_template('modules/mem.html', title=custom_title, data=module_data, new_page=new_page)
 
                 elif module_type in ['traffic_in', 'traffic_out']:
                     interface = module.get('interface')
@@ -645,20 +646,20 @@ class ReportGenerator:
                     if module_type == 'traffic_in':
                         df_net_in = data['df_net_in']
                         module_data = { 'tabela': df_net_in.to_html(classes='table', index=False, float_format='%.4f'), 'grafico': self._generate_multi_bar_chart(df_net_in, 'Tráfego de Entrada (Mbps)', 'Mbps', ['#ffc266', '#ffa31a', '#e68a00']) }
-                        html_part = render_template('modules/traffic_in.html', title=custom_title, data=module_data)
+                        html_part = render_template('modules/traffic_in.html', title=custom_title, data=module_data, new_page=new_page)
 
                     elif module_type == 'traffic_out':
                         df_net_out = data['df_net_out']
                         module_data = { 'tabela': df_net_out.to_html(classes='table', index=False, float_format='%.4f'), 'grafico': self._generate_multi_bar_chart(df_net_out, 'Tráfego de Saída (Mbps)', 'Mbps', ['#85e085', '#33cc33', '#248f24']) }
-                        html_part = render_template('modules/traffic_out.html', title=custom_title, data=module_data)
+                        html_part = render_template('modules/traffic_out.html', title=custom_title, data=module_data, new_page=new_page)
 
                 elif module_type == 'inventory':
                     module_data = {'tabela': pd.DataFrame(all_hosts)[['nome_visivel', 'ip0']].rename(columns={'nome_visivel': 'Host', 'ip0': 'IP'}).to_html(classes='table', index=False, border=0)}
-                    html_part = render_template('modules/inventory.html', title=custom_title, data=module_data)
+                    html_part = render_template('modules/inventory.html', title=custom_title, data=module_data, new_page=new_page)
 
                 elif module_type == 'html':
                     module_data = {'content': module.get('content', '')}
-                    html_part = render_template('modules/custom_html.html', title=custom_title, data=module_data)
+                    html_part = render_template('modules/custom_html.html', title=custom_title, data=module_data, new_page=new_page)
                 
                 final_html_parts.append(html_part)
 

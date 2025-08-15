@@ -99,10 +99,8 @@ document.addEventListener("DOMContentLoaded", function() {
         let contentHtml = '';
         if (type === 'html') {
             contentHtml = `<textarea class="form-control mt-2" data-type="content" rows="3" placeholder="Digite seu texto ou código HTML aqui..."></textarea>`;
-        } else if (type.startsWith('traffic')) {
-             contentHtml = `<input type="text" class="form-control form-control-sm mt-2" data-type="interface" placeholder="Opcional: Nome da interface (ex: eth0)">`;
         }
-
+        
         const moduleHtml = `
             <div class="report-module" data-type="${type}" id="${moduleId}">
                 <div class="module-header">
@@ -113,6 +111,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 </div>
                 <input type="text" class="form-control form-control-sm mt-2" data-type="title" placeholder="Opcional: Título customizado para o relatório">
                 ${contentHtml}
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" role="switch" id="newPage-${moduleId}" data-type="newPage">
+                    <label class="form-check-label" for="newPage-${moduleId}" style="font-size: 0.8rem;">Iniciar em Nova Página</label>
+                </div>
             </div>
         `;
         layoutContainer.insertAdjacentHTML('beforeend', moduleHtml);
@@ -179,39 +181,6 @@ document.addEventListener("DOMContentLoaded", function() {
     const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
     const statusMessage = document.getElementById('status-message');
     let intervalId;
-    
-    function resetForm() {
-        btnText.innerHTML = '<i class="bi bi-play-circle"></i> Gerar e Baixar Relatório';
-        btnSpinner.classList.add('d-none');
-        submitBtn.disabled = false;
-        if (intervalId) clearInterval(intervalId);
-        progressModal.hide();
-    }
-
-    function checkStatus(taskId) {
-        try {
-            fetch(`/report_status/${taskId}`)
-                .then(response => response.json())
-                .then(data => {
-                    statusMessage.textContent = data.status || 'Processando...';
-                    if (data.status.startsWith('Erro')) {
-                        clearInterval(intervalId);
-                        alert(data.status);
-                        resetForm();
-                    } else if (data.status === 'Concluído') {
-                        clearInterval(intervalId);
-                        statusMessage.textContent = 'Sucesso! Iniciando o download...';
-                        window.location.href = `/download_final_report/${taskId}`;
-                        setTimeout(resetForm, 3000);
-                    }
-                });
-        } catch (error) {
-            console.error('Erro ao verificar status:', error);
-            statusMessage.textContent = 'Erro de comunicação.';
-            clearInterval(intervalId);
-            setTimeout(resetForm, 2000);
-        }
-    }
 
     submitBtn.addEventListener('click', function() {
         const layout = [];
@@ -219,11 +188,11 @@ document.addEventListener("DOMContentLoaded", function() {
             const moduleData = { type: moduleEl.dataset.type };
             const titleInput = moduleEl.querySelector('input[data-type="title"]');
             const contentInput = moduleEl.querySelector('textarea[data-type="content"]');
-            const interfaceInput = moduleEl.querySelector('input[data-type="interface"]');
-
+            const newPageInput = moduleEl.querySelector('input[data-type="newPage"]');
+            
             if (titleInput && titleInput.value) moduleData.title = titleInput.value;
             if (contentInput && contentInput.value) moduleData.content = contentInput.value;
-            if (interfaceInput && interfaceInput.value) moduleData.interface = interfaceInput.value;
+            if (newPageInput && newPageInput.checked) moduleData.newPage = true;
             
             layout.push(moduleData);
         });
@@ -256,6 +225,38 @@ document.addEventListener("DOMContentLoaded", function() {
                 resetForm();
             });
     });
+    
+    function resetForm() {
+        btnText.innerHTML = '<i class="bi bi-play-circle"></i> Gerar e Baixar Relatório';
+        btnSpinner.classList.add('d-none');
+        submitBtn.disabled = false;
+        if (intervalId) clearInterval(intervalId);
+        progressModal.hide();
+    }
+
+    function checkStatus(taskId) {
+        fetch(`/report_status/${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                statusMessage.textContent = data.status || 'Processando...';
+                if (data.status.startsWith('Erro')) {
+                    clearInterval(intervalId);
+                    alert(data.status);
+                    resetForm();
+                } else if (data.status === 'Concluído') {
+                    clearInterval(intervalId);
+                    statusMessage.textContent = 'Sucesso! Iniciando o download...';
+                    window.location.href = `/download_final_report/${taskId}`;
+                    setTimeout(resetForm, 3000);
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao verificar status:', error);
+                statusMessage.textContent = 'Erro de comunicação.';
+                clearInterval(intervalId);
+                setTimeout(resetForm, 2000);
+            });
+    }
 });
 </script>
 {% endblock %}
