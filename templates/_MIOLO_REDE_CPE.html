@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório de Desempenho de Rede e CPEs</title>
+    <style>
+        @page {
+            size: a4 portrait;
+            margin: 2.5cm 1.5cm;
+            @frame header_frame { -pdf-frame-content: header_content; left: 1.5cm; right: 1.5cm; top: 1cm; height: 1.5cm; }
+            @frame footer_frame { -pdf-frame-content: footer_content; left: 1.5cm; right: 1.5cm; bottom: 1cm; height: 1cm; }
+        }
+        body { font-family: 'Helvetica', 'Arial', sans-serif; font-size: 10pt; color: #333; }
+        h1 { font-size: 20pt; text-align: center; color: #0d47a1; }
+        h2 { font-size: 16pt; border-bottom: 2px solid #0d47a1; color: #0d47a1; padding-bottom: 5px; margin-top: 25px; page-break-before: always; }
+        h2.first { page-break-before: auto; }
+        h3 { font-size: 13pt; margin-top: 20px; }
+        thead { display: table-header-group; }
+        .table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 7pt; page-break-inside: auto; }
+        .table th, .table td { border: 1px solid #e0e0e0; padding: 5px; text-align: left; }
+        .table th { background-color: #1e88e5; color: #fff; font-weight: bold; }
+        .chart-container { text-align: center; margin-top: 20px; page-break-inside: avoid; }
+        .chart-container img { max-width: 100%; height: auto; }
+        .summary-box { padding: 10px; margin-bottom: 20px; text-align: center; }
+        #header_content, #footer_content { font-size: 9pt; color: #555; }
+        #footer_content { text-align: right; }
+    </style>
+</head>
+<body>
+    <div id="header_content">Relatório de Medição de Tráfego, CPU e Memória CPEs</div>
+    <div id="footer_content">Página <pdf:pagenumber> de <pdf:pagecount></div>
+
+    <h1>Relatório de Desempenho de Rede e CPEs</h1>
+    <div class="summary-box">
+        <p><strong>Cliente:</strong> {{ group_name }}</p>
+        <p><strong>Período de Referência:</strong> {{ periodo_referencia }}</p>
+    </div>
+
+    <h2 class="first">1. Medição de Ocupação de CPU %</h2>
+    <div class="chart-container">
+        {% if grafico_cpu %}<img src="data:image/png;base64,{{ grafico_cpu }}">
+        {% else %}<p><i>Gráfico de CPU indisponível.</i></p>{% endif %}
+    </div>
+    {{ tabela_cpu | safe }}
+
+    <h2>2. Medição de Ocupação de Memória %</h2>
+    <div class="chart-container">
+        {% if grafico_mem %}<img src="data:image/png;base64,{{ grafico_mem }}">
+        {% else %}<p><i>Gráfico de Memória indisponível.</i></p>{% endif %}
+    </div>
+    {{ tabela_mem | safe }}
+
+    <h2>3. Medição de Tráfego Entrada/Saída (Mbps)</h2>
+    <h3>Tráfego de Entrada (In)</h3>
+    <div class="chart-container">
+        {% if grafico_net_in %}<img src="data:image/png;base64,{{ grafico_net_in }}">
+        {% else %}<p><i>Gráfico de Tráfego de Entrada indisponível.</i></p>{% endif %}
+    </div>
+    {{ tabela_net_in | safe }}
+
+    <h3 style="page-break-before: always;">Tráfego de Saída (Out)</h3>
+    <div class="chart-container">
+        {% if grafico_net_out %}<img src="data:image/png;base64,{{ grafico_net_out }}">
+        {% else %}<p><i>Gráfico de Tráfego de Saída indisponível.</i></p>{% endif %}
+    </div>
+    {{ tabela_net_out | safe }}
+</body>
+</html>

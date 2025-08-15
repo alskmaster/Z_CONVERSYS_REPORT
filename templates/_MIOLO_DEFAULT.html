@@ -1,0 +1,11 @@
+<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><title>Miolo do Relatório Padrão</title>
+<style>
+@page { size: a4 portrait; margin: 2.5cm 1.5cm; @frame header_frame { -pdf-frame-content: header_content; left: 1.5cm; right: 1.5cm; top: 1cm; height: 2cm; } @frame footer_frame { -pdf-frame-content: footer_content; left: 1.5cm; right: 1.5cm; bottom: 1cm; height: 1cm; }}
+body { font-family: 'Helvetica', 'Arial', sans-serif; font-size: 10pt; color: #333; } h1, h2, h3 { font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif; font-weight: 300; color: #0d47a1; } h1 { font-size: 22pt; text-align: center; } h2 { font-size: 16pt; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px; page-break-before: auto; page-break-after: avoid; } thead { display: table-header-group; } .table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 8pt; page-break-inside: auto; } .table th, .table td { border: 1px solid #e0e0e0; padding: 6px; text-align: left; } .table th { background-color: #1e88e5; color: #fff; font-weight: bold; } .chart-container { text-align: center; margin-top: 20px; page-break-inside: avoid; } .chart-container img { max-width: 95%; height: auto; } .sla-critico { background-color: #ffebee !important; color: #c62828; font-weight: bold; } .sla-atencao { background-color: #fffde7 !important; color: #f57f17; } #header_content, #footer_content { font-size: 9pt; color: #555; } #footer_content { text-align: right; }
+</style></head><body>
+<div id="header_content">Relatório de Monitoramento | {{ group_name }}</div><div id="footer_content">Gerado em {{ data_emissao }} | Página <pdf:pagenumber> de <pdf:pagecount></div>
+<h1>Relatório Padrão</h1><p>Grupo: {{ group_name }}</p><p>Período: {{ periodo_referencia }}</p><p>Data de emissão: {{ data_emissao }}</p>
+<h2>KPIs</h2><div>{{ kpis | safe }}</div><h2>Tabela de SLA</h2><div>{{ tabela_sla_problemas | safe }}</div>
+<h2>Top Incidentes</h2>{% if grafico_top_problemas %}<div class="chart-container"><img src="data:image/png;base64,{{ grafico_top_problemas }}"></div>{% endif %}
+<h2>Top Hosts com Indisponibilidade</h2>{% if grafico_top_hosts %}<div class="chart-container"><img src="data:image/png;base64,{{ grafico_top_hosts }}"></div>{% endif %}
+</body></html>

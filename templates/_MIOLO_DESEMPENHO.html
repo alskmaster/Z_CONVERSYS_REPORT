@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório de Desempenho</title>
+    <style>
+        @page {
+            size: a4 portrait;
+            margin: 2.5cm 1.5cm;
+            @frame header_frame {
+                -pdf-frame-content: header_content;
+                left: 1.5cm; right: 1.5cm; top: 1cm; height: 2cm;
+            }
+            @frame footer_frame {
+                -pdf-frame-content: footer_content;
+                left: 1.5cm; right: 1.5cm; bottom: 1cm; height: 1cm;
+            }
+        }
+        body { font-family: 'Helvetica', 'Arial', sans-serif; font-size: 10pt; color: #333; }
+        h1, h2, h3 { font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif; font-weight: 300; color: #0d47a1; }
+        h1 { font-size: 22pt; text-align: center; }
+        h2 { font-size: 16pt; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px; page-break-before: auto; page-break-after: avoid; }
+        thead { display: table-header-group; }
+        .table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 8pt; page-break-inside: auto; }
+        .table th, .table td { border: 1px solid #e0e0e0; padding: 6px; text-align: left; }
+        .table th { background-color: #1e88e5; color: #fff; font-weight: bold; }
+        .kpi-box-single { width: 100%; background-color: #f5f5f5; border: 1px solid #e0e0e0; border-radius: 5px; padding: 15px; margin-bottom: 15px; text-align: center; page-break-inside: avoid; }
+        .kpi-value { font-size: 28pt; font-weight: bold; color: #0d47a1; }
+        .kpi-label { font-size: 12pt; color: #333; margin-top: 5px; }
+        #header_content, #footer_content { font-size: 9pt; color: #555; }
+        #footer_content { text-align: right; }
+    </style>
+</head>
+<body>
+    <div id="header_content">Relatório de Desempenho | {{ group_name }}</div>
+    <div id="footer_content">Gerado em {{ data_emissao }} | Página <pdf:pagenumber> de <pdf:pagecount></div>
+
+    <h1>Relatório de Desempenho de Servidores</h1>
+    <p><strong>Cliente:</strong> {{ group_name }}</p>
+    <p><strong>Período:</strong> {{ periodo_referencia }}</p>
+
+    <h2>KPIs de Desempenho</h2>
+    <div>{{ kpis_desempenho | safe }}</div>
+
+    <h2>Top 5 Servidores por Uso de CPU</h2>
+    <div>{{ tabela_top_cpu | safe }}</div>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{% extends 'admin/base.html' %}
+{% block title %}Configurações do Sistema{% endblock %}
+{% block admin_content %}
+<div class="row justify-content-center"><div class="col-lg-10">
+<div class="card mb-4"><div class="card-header">Customização da Aparência</div>
+<div class="card-body"><form method="POST" action="{{ url_for('admin_customize_save') }}" enctype="multipart/form-data">
+<div class="mb-3"><label class="form-label">Nome da Empresa</label><input type="text" class="form-control" name="company_name" value="{{ g.sys_config.company_name }}" required></div>
+<div class="row">
+    <div class="col-md-6 mb-3"><label class="form-label">Logo para Fundos Escuros (Sidebar)</label><input type="file" class="form-control" name="logo_dark" accept=".png,.jpg,.jpeg">
+    {% if g.sys_config.logo_dark_bg_path %}<small class="form-text text-muted">Atual: <img src="{{ url_for('uploaded_file', filename=g.sys_config.logo_dark_bg_path) }}" height="30" class="mt-1 bg-dark p-1 rounded"></small>{% endif %}</div>
+    <div class="col-md-6 mb-3"><label class="form-label">Logo para Fundos Claros (Login)</label><input type="file" class="form-control" name="logo_light" accept=".png,.jpg,.jpeg">
+    {% if g.sys_config.logo_light_bg_path %}<small class="form-text text-muted">Atual: <img src="{{ url_for('uploaded_file', filename=g.sys_config.logo_light_bg_path) }}" height="30" class="mt-1 border p-1 rounded"></small>{% endif %}</div>
+</div>
+<div class="mb-3"><label class="form-label">Tamanho do Logo na Sidebar (Altura em px)</label><input type="number" class="form-control" name="logo_size" value="{{ g.sys_config.logo_size }}"></div>
+<div class="row"><div class="col-md-6 mb-3"><label class="form-label">Cor Primária (Sidebar)</label><input type="color" class="form-control form-control-color" name="primary_color" value="{{ g.sys_config.primary_color }}"></div>
+<div class="col-md-6 mb-3"><label class="form-label">Cor Secundária (Destaques)</label><input type="color" class="form-control form-control-color" name="secondary_color" value="{{ g.sys_config.secondary_color }}"></div></div>
+<div class="mb-3"><label class="form-label">Texto do Rodapé</label><input type="text" class="form-control" name="footer_text" value="{{ g.sys_config.footer_text|striptags }}"></div>
+<hr class="my-4">
+<h5 class="mb-3">Customização da Tela de Login</h5>
+<div class="mb-3"><label class="form-label">Mídia da Tela de Login (Imagem/GIF)</label><input type="file" class="form-control" name="login_media" accept=".png,.jpg,.jpeg,.gif">
+{% if g.sys_config.login_media_path %}<small class="form-text text-muted">Atual: <img src="{{ url_for('uploaded_file', filename=g.sys_config.login_media_path) }}" height="50" class="mt-1 border p-1 rounded"></small>{% endif %}</div>
+<div class="row">
+    <div class="col-md-6 mb-3"><label class="form-label">Cor de Fundo da Mídia</label><input type="color" class="form-control form-control-color" name="login_media_bg_color" value="{{ g.sys_config.login_media_bg_color }}"></div>
+    <div class="col-md-6 mb-3"><label class="form-label">Modo de Preenchimento da Mídia</label>
+        <select name="login_media_fill_mode" class="form-select">
+            <option value="cover" {% if g.sys_config.login_media_fill_mode == 'cover' %}selected{% endif %}>Cobrir (Preenche o espaço, pode cortar)</option>
+            <option value="contain" {% if g.sys_config.login_media_fill_mode == 'contain' %}selected{% endif %}>Conter (Mostra imagem inteira, pode ter bordas)</option>
+            <option value="fill" {% if g.sys_config.login_media_fill_mode == 'fill' %}selected{% endif %}>Preencher (Estica para caber, pode distorcer)</option>
+        </select>
+    </div>
+</div>
+<hr class="my-4">
+<h5 class="mb-3">Customização dos Relatórios PDF</h5>
+<div class="row">
+    <div class="col-md-6 mb-3"><label class="form-label">Template da Página de Capa (PDF)</label><input type="file" class="form-control" name="report_cover" accept=".pdf">
+    {% if g.sys_config.report_cover_path %}<small class="form-text text-muted">Atual: {{ g.sys_config.report_cover_path }}</small>{% endif %}</div>
+    <div class="col-md-6 mb-3"><label class="form-label">Template da Página Final (PDF)</label><input type="file" class="form-control" name="report_final_page" accept=".pdf">
+    {% if g.sys_config.report_final_page_path %}<small class="form-text text-muted">Atual: {{ g.sys_config.report_final_page_path }}</small>{% endif %}</div>
+</div>
+<button type="submit" class="btn btn-primary mt-3">Salvar Aparência</button></form></div></div>
+<div class="card"><div class="card-header">Diagnóstico</div>
+<div class="card-body"><p>Verifique se as credenciais do Zabbix no arquivo <code>.env</code> estão corretas.</p>
+<form method="POST" action="{{ url_for('admin_test_zabbix') }}"><button type="submit" class="btn btn-info">Testar Conexão com Zabbix</button></form></div></div></div></div>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends 'admin/base.html' %}
+{% block title %}Vincular Usuários a Clientes{% endblock %}
+{% block admin_content %}
+<div class="row justify-content-center"><div class="col-lg-8"><div class="card">
+<div class="card-header">Vincular Usuários a Clientes</div>
+<div class="card-body"><form method="POST">
+    <div class="mb-3">
+        <label for="user_id" class="form-label">Usuário (tipo Cliente)</label>
+        <select class="form-select" name="user_id" id="user_id" required>
+            <option value="">Selecione um usuário</option>
+            {% for user in users %}<option value="{{ user.id }}">{{ user.username }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Clientes Vinculados</label>
+        <div id="client-checkboxes" class="border p-3 rounded" style="max-height: 200px; overflow-y: auto;">
+            <p class="text-muted">Selecione um usuário para ver os clientes.</p>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Salvar Vínculos</button>
+</form></div></div></div></div>
+<script>
+document.getElementById('user_id').addEventListener('change', function() {
+    const userId = this.value;
+    const checkboxContainer = document.getElementById('client-checkboxes');
+    if (!userId) {
+        checkboxContainer.innerHTML = '<p class="text-muted">Selecione um usuário para ver os clientes.</p>';
+        return;
+    }
+    fetch(`/admin/get_user_clients/${userId}`)
+        .then(response => response.json())
+        .then(data => {
+            let checkboxesHtml = '';
+            data.all_clients.forEach(client => {
+                const isChecked = data.linked_clients.includes(client.id);
+                checkboxesHtml += `
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="client_ids" value="${client.id}" id="client-${client.id}" ${isChecked ? 'checked' : ''}>
+                        <label class="form-check-label" for="client-${client.id}">${client.name}</label>
+                    </div>
+                `;
+            });
+            checkboxContainer.innerHTML = checkboxesHtml;
+        });
+});
+</script>
+{% endblock %}

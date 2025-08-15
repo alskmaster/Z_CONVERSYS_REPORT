@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% block title %}Gerar Relatório{% endblock %}
+{% block content %}
+<style>
+    #report-layout-container .report-module { border: 1px solid #dee2e6; border-radius: .375rem; padding: 1rem; margin-bottom: 0.5rem; background-color: #fff; }
+    #report-layout-container .module-header { display: flex; justify-content: space-between; align-items: center; cursor: grab; }
+    #available-modules-container .btn { margin-right: 0.5rem; margin-bottom: 0.5rem; }
+</style>
+
+<div class="row">
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-sliders"></i> Parâmetros e Módulos</div>
+            <div class="card-body">
+                <form id="report-form">
+                    <div class="mb-3">
+                        <label for="client_id" class="form-label">Cliente</label>
+                        <select class="form-select" id="client_id" name="client_id" required>
+                        {% if clients %}{% for client in clients %}<option value="{{ client.id }}">{{ client.name }}</option>{% endfor %}{% else %}
+                        <option value="" disabled selected>Nenhum cliente cadastrado.</option>{% endif %}</select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="mes_ref" class="form-label">Mês de Referência</label>
+                        <input type="month" class="form-control" id="mes_ref" name="mes_ref" required>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label">Módulos Disponíveis</label>
+                        <div id="available-modules-container" style="min-height: 3rem;">
+                            <small class="text-muted">Selecione um cliente para ver os módulos disponíveis.</small>
+                        </div>
+                    </div>
+                    <input type="hidden" name="report_layout" id="report_layout_input">
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-columns-gap"></i> Layout do Relatório</div>
+            <div class="card-body" id="report-layout-container" style="min-height: 200px;">
+                <p class="text-muted text-center" id="layout-placeholder">Adicione módulos para montar seu relatório.</p>
+            </div>
+            <div class="card-footer">
+                <div class="d-grid">
+                    <button type="button" id="submit-btn" class="btn btn-primary btn-lg">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <span class="btn-text"><i class="bi bi-play-circle"></i> Gerar e Baixar Relatório</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="progressModalLabel">Gerando Relatório...</h5></div>
+      <div class="modal-body"><p id="status-message">Iniciando...</p><div class="progress"><div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div></div></div></div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const today = new Date();
+    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const year = lastMonth.getFullYear();
+    const month = String(lastMonth.getMonth() + 1).padStart(2, '0');
+    document.getElementById('mes_ref').value = `${year}-${month}`;
+
+    const clientIdSelect = document.getElementById('client_id');
+    const availableModulesContainer = document.getElementById('available-modules-container');
+    const layoutContainer = document.getElementById('report-layout-container');
+    const layoutPlaceholder = document.getElementById('layout-placeholder');
+    const submitBtn = document.getElementById('submit-btn');
+    let sortable = Sortable.create(layoutContainer, { animation: 150 });
+
+    function addModuleToLayout(type, name) {
+        if (layoutPlaceholder) {
+            layoutPlaceholder.style.display = 'none';
+        }
+        const moduleId = `module-${Date.now()}`;
+        let contentHtml = '';
+        if (type === 'html') {
+            contentHtml = `<textarea class="form-control mt-2" data-type="content" rows="3" placeholder="Digite seu texto ou código HTML aqui..."></textarea>`;
+        } else if (type.startsWith('traffic')) {
+             contentHtml = `<input type="text" class="form-control form-control-sm mt-2" data-type="interface" placeholder="Opcional: Nome da interface (ex: eth0)">`;
+        }
+
+        const moduleHtml = `
+            <div class="report-module" data-type="${type}" id="${moduleId}">
+                <div class="module-header">
+                    <strong>Módulo: ${name}</strong>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-danger remove-module-btn"><i class="bi bi-trash"></i></button>
+                    </div>
+                </div>
+                <input type="text" class="form-control form-control-sm mt-2" data-type="title" placeholder="Opcional: Título customizado para o relatório">
+                ${contentHtml}
+            </div>
+        `;
+        layoutContainer.insertAdjacentHTML('beforeend', moduleHtml);
+    }
+
+    availableModulesContainer.addEventListener('click', function(e) {
+        if (e.target.tagName === 'BUTTON') {
+            const type = e.target.dataset.type;
+            const name = e.target.textContent;
+            addModuleToLayout(type, name);
+        }
+    });
+
+    layoutContainer.addEventListener('click', function(e) {
+        if (e.target.closest('.remove-module-btn')) {
+            e.target.closest('.report-module').remove();
+            if (layoutContainer.children.length <= 1) { // 1 por causa do placeholder
+                 if (layoutPlaceholder) layoutPlaceholder.style.display = 'block';
+            }
+        }
+    });
+
+    const updateAvailableModules = async () => {
+        const clientId = clientIdSelect.value;
+        if (!clientId) {
+            availableModulesContainer.innerHTML = '<small class="text-muted">Selecione um cliente para ver os módulos disponíveis.</small>';
+            return;
+        }
+
+        availableModulesContainer.innerHTML = `<div class="d-flex align-items-center text-muted"><div class="spinner-border spinner-border-sm me-2" role="status"></div>Verificando módulos...</div>`;
+        
+        try {
+            const response = await fetch(`/admin/get_available_modules/${clientId}`);
+            if (!response.ok) throw new Error('Falha na verificação');
+            const data = await response.json();
+            
+            availableModulesContainer.innerHTML = '';
+            if (data.available_modules && data.available_modules.length > 0) {
+                data.available_modules.forEach(module => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-sm btn-outline-primary';
+                    btn.dataset.type = module.type;
+                    btn.textContent = module.name;
+                    availableModulesContainer.appendChild(btn);
+                });
+            } else {
+                availableModulesContainer.innerHTML = '<small class="text-danger">Nenhum módulo de dados encontrado para este cliente.</small>';
+            }
+        } catch (error) {
+            console.error(error);
+            availableModulesContainer.innerHTML = '<small class="text-warning">Não foi possível verificar os módulos.</small>';
+        }
+    };
+    
+    clientIdSelect.addEventListener('change', updateAvailableModules);
+    if(clientIdSelect.value) updateAvailableModules();
+
+    // Lógica de Geração
+    const form = document.getElementById('report-form');
+    const layoutInput = document.getElementById('report_layout_input');
+    const btnText = submitBtn.querySelector('.btn-text');
+    const btnSpinner = submitBtn.querySelector('.spinner-border');
+    const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
+    const statusMessage = document.getElementById('status-message');
+    let intervalId;
+
+    submitBtn.addEventListener('click', function() {
+        const layout = [];
+        layoutContainer.querySelectorAll('.report-module').forEach(moduleEl => {
+            const moduleData = { type: moduleEl.dataset.type };
+            const titleInput = moduleEl.querySelector('input[data-type="title"]');
+            const contentInput = moduleEl.querySelector('textarea[data-type="content"]');
+            const interfaceInput = moduleEl.querySelector('input[data-type="interface"]');
+
+            if (titleInput && titleInput.value) moduleData.title = titleInput.value;
+            if (contentInput && contentInput.value) moduleData.content = contentInput.value;
+            if (interfaceInput && interfaceInput.value) moduleData.interface = interfaceInput.value;
+            
+            layout.push(moduleData);
+        });
+        
+        if (layout.length === 0) {
+            alert('Por favor, adicione pelo menos um módulo ao layout do relatório.');
+            return;
+        }
+
+        layoutInput.value = JSON.stringify(layout);
+        
+        // Inicia a geração
+        btnText.textContent = 'Gerando...';
+        btnSpinner.classList.remove('d-none');
+        submitBtn.disabled = true;
+        
+        const formData = new FormData(form);
+        fetch("{{ url_for('gerar_relatorio') }}", { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.task_id) {
+                    progressModal.show();
+                    intervalId = setInterval(() => checkStatus(data.task_id), 1500);
+                } else {
+                    alert(data.error || 'Ocorreu um erro desconhecido.');
+                    resetForm();
+                }
+            })
+            .catch(error => {
+                alert('Falha ao iniciar a geração do relatório.');
+                resetForm();
+            });
+    });
+
+    function resetForm() { /* ... Lógica de reset ... */ }
+    function checkStatus(taskId) { /* ... Lógica de verificação de status ... */ }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,32 @@
+<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><title>Relatório de Monitoramento</title>
+<style>
+    @page { size: a4 portrait; margin: 2.5cm 1.5cm; @frame header_frame { -pdf-frame-content: header_content; left: 1.5cm; right: 1.5cm; top: 1cm; height: 1.5cm; } @frame footer_frame { -pdf-frame-content: footer_content; left: 1.5cm; right: 1.5cm; bottom: 1cm; height: 1cm; }}
+    body { font-family: 'Helvetica', 'Arial', sans-serif; font-size: 10pt; color: #333; }
+    h1 { font-size: 20pt; text-align: center; color: #0d47a1; }
+    h2 { font-size: 16pt; border-bottom: 2px solid #0d47a1; color: #0d47a1; padding-bottom: 5px; margin-top: 25px; page-break-before: auto; }
+    .report-module-instance:first-child h2 { page-break-before: auto; }
+    h3 { font-size: 13pt; margin-top: 20px; }
+    thead { display: table-header-group; }
+    .table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 7pt; page-break-inside: auto; }
+    .table th, .table td { border: 1px solid #e0e0e0; padding: 5px; text-align: left; }
+    .table th { background-color: #1e88e5; color: #fff; font-weight: bold; }
+    .chart-container { text-align: center; margin-top: 20px; page-break-inside: avoid; }
+    .chart-container img { max-width: 100%; height: auto; }
+    .summary-box { padding: 10px; margin-bottom: 20px; text-align: center; }
+    #header_content, #footer_content { font-size: 9pt; color: #555; }
+    #footer_content { text-align: right; }
+</style></head>
+<body>
+    <div id="header_content">Relatório de Monitoramento | {{ group_name }}</div>
+    <div id="footer_content">Página <pdf:pagenumber> de <pdf:pagecount></div>
+    
+    <h1>Relatório de Monitoramento Customizado</h1>
+    <div class="summary-box">
+        <p><strong>Cliente:</strong> {{ group_name }}</p>
+        <p><strong>Período:</strong> {{ periodo_referencia }}</p>
+    </div>
+
+    {{ report_content|safe }}
+
+</body>
+</html>

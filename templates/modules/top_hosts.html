@@ -1,0 +1,7 @@
+<div class="report-module-instance">
+    <h2>{{ title or 'Top 10 Hosts com Maior Indisponibilidade' }}</h2>
+    <div class="chart-container">
+        {% if data.grafico %}<img src="data:image/png;base64,{{ data.grafico }}">
+        {% else %}<p><i>Nenhum host com indisponibilidade registrada.</i></p>{% endif %}
+    </div>
+</div>

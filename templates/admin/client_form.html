@@ -1,0 +1,87 @@
+{% extends 'admin/base.html' %}
+{% block title %}{{ 'Adicionar' if not client else 'Editar' }} Cliente{% endblock %}
+{% block admin_content %}
+<div class="row justify-content-center"><div class="col-lg-8"><div class="card">
+<div class="card-header">{{ 'Adicionar Cliente' if not client else 'Editar Cliente' }}</div>
+<div class="card-body"><form method="POST" enctype="multipart/form-data">
+    <div class="mb-3"><label class="form-label">Nome do Cliente</label>
+    <input type="text" class="form-control" name="name" value="{{ client.name if client else '' }}" required></div>
+
+    <div id="zabbix-groups-container">
+        <label class="form-label">Grupos Zabbix</label>
+        {% if client and client.zabbix_groups %}
+            {% for group in client.zabbix_groups %}
+            <div class="input-group mb-2">
+                <select class="form-select" name="zabbix_group_ids" required>
+                    <option value="">Selecione um Grupo Zabbix</option>
+                    {% for zabbix_group in zabbix_groups %}
+                        <option value="{{ zabbix_group.groupid }}" {% if zabbix_group.groupid == group.zabbix_group_id %}selected{% endif %}>
+                            {{ zabbix_group.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-outline-danger remove-group-btn" type="button">Remover</button>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="input-group mb-2">
+                <select class="form-select" name="zabbix_group_ids" required>
+                    <option value="">Selecione um Grupo Zabbix</option>
+                    {% for zabbix_group in zabbix_groups %}
+                        <option value="{{ zabbix_group.groupid }}">{{ zabbix_group.name }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-outline-danger remove-group-btn" type="button" style="display: none;">Remover</button>
+            </div>
+        {% endif %}
+    </div>
+    <button type="button" id="add-group-btn" class="btn btn-sm btn-outline-secondary mb-3">Adicionar outro Grupo</button>
+
+    <div class="mb-3"><label class="form-label">SLA Contratado (%)</label>
+    <input type="number" step="0.01" class="form-control" name="sla_contract" value="{{ client.sla_contract if client else '99.9' }}" required></div>
+
+    <div class="mb-3"><label class="form-label">Logo do Cliente</label><input type="file" class="form-control" name="logo" accept=".png,.jpg,.jpeg">
+    {% if client and client.logo_path %}<small class="form-text text-muted">Atual: <img src="{{ url_for('uploaded_file', filename=client.logo_path) }}" height="30" class="mt-1 border p-1 rounded"></small>{% endif %}</div>
+
+    <button type="submit" class="btn btn-primary">Salvar</button>
+    <a href="{{ url_for('admin_clients') }}" class="btn btn-secondary">Cancelar</a>
+</form></div></div></div></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const container = document.getElementById('zabbix-groups-container');
+    const addBtn = document.getElementById('add-group-btn');
+
+    // Salva o HTML do dropdown original para usar como template
+    const groupSelectTemplate = container.querySelector('.input-group').cloneNode(true);
+    groupSelectTemplate.querySelector('select').selectedIndex = 0; // Reseta a seleção
+
+    function updateRemoveButtons() {
+        const groups = container.querySelectorAll('.input-group');
+        groups.forEach((group, index) => {
+            const removeBtn = group.querySelector('.remove-group-btn');
+            if (groups.length > 1) {
+                removeBtn.style.display = 'block';
+            } else {
+                removeBtn.style.display = 'none';
+            }
+        });
+    }
+
+    addBtn.addEventListener('click', function() {
+        // Usa o template clonado para adicionar um novo dropdown
+        container.appendChild(groupSelectTemplate.cloneNode(true));
+        updateRemoveButtons();
+    });
+
+    container.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('remove-group-btn')) {
+            e.target.closest('.input-group').remove();
+            updateRemoveButtons();
+        }
+    });
+
+    updateRemoveButtons();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends 'admin/base.html' %}
+{% block title %}{{ 'Adicionar' if not user else 'Editar' }} Usuário{% endblock %}
+{% block admin_content %}
+<div class="row justify-content-center"><div class="col-lg-8"><div class="card">
+<div class="card-header">{{ 'Adicionar Novo Usuário' if not user else 'Editar Usuário' }}</div>
+<div class="card-body"><form method="POST">
+<div class="mb-3"><label for="username" class="form-label">Usuário</label>
+<input type="text" class="form-control" name="username" value="{{ user.username if user else '' }}" required></div>
+<div class="mb-3"><label for="password" class="form-label">Senha</label>
+<input type="password" class="form-control" name="password" {% if not user %}required{% endif %}>
+<div class="form-text">Deixe em branco para não alterar a senha existente.</div></div>
+<div class="mb-3"><label for="role_id" class="form-label">Função</label>
+<select class="form-select" name="role_id" required>
+{% for role in roles %}<option value="{{ role.id }}" {% if user and user.role_id == role.id %}selected{% endif %}>{{ role.name }}</option>{% endfor %}</select></div>
+<div class="mt-4"><button type="submit" class="btn btn-primary">Salvar</button>
+<a href="{{ url_for('admin_users') }}" class="btn btn-secondary">Cancelar</a></div></form></div></div></div></div>
+{% endblock %}

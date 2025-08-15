@@ -1,0 +1,9 @@
+<div class="report-module-instance">
+    <h2>{{ title or 'Análise de Disponibilidade (SLA)' }}</h2>
+    <div class="summary-box">
+        {% if data.hosts_com_falha_sla == 0 %}<p style="text-align:center; font-weight:bold; color: #2e7d32;">Parabéns! 100% dos {{ data.total_hosts }} hosts analisados atingiram a meta de disponibilidade.</p>
+        {% else %}<p style="text-align:center; font-weight:bold; color: #c62828;">Atenção: {{ data.hosts_com_falha_sla }} de {{ data.total_hosts }} hosts analisados não atingiram 100% de disponibilidade.</p>{% endif %}
+    </div>
+    <div class="kpi-container">{{ data.kpis|safe }}</div>
+    {{ data.tabela_sla_problemas|safe }}
+</div>

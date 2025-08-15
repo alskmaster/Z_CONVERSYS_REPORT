@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>{{ title }} - {{ g.sys_config.company_name }}</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+{% set sidebar_text_color = g.sys_config.primary_color | text_color_for_bg %}
+:root { --primary-color: {{ g.sys_config.primary_color | default('#2c3e50') }}; --secondary-color: {{ g.sys_config.secondary_color | default('#3498db') }}; --bg-light: #f4f6f9; --sidebar-width: 250px; }
+html, body { height: 100%; }
+body { font-family: 'Poppins', sans-serif; background-color: var(--bg-light); display: flex; flex-direction: column; }
+.wrapper { display: flex; flex-grow: 1; }
+.sidebar { width: var(--sidebar-width); min-height: 100vh; background: var(--primary-color); transition: margin-left 0.3s; display: flex; flex-direction: column; flex-shrink: 0; }
+#content { flex-grow: 1; padding: 2rem; display: flex; flex-direction: column; }
+.main-content { flex-grow: 1; }
+.sidebar-header { padding: 1.5rem; text-align: center; border-bottom: 1px solid rgba(0,0,0,0.1); }
+.sidebar-header .logo { display: block; margin: 0 auto; }
+.sidebar-header h5 { color: {{ sidebar_text_color }}; font-weight: 600; margin-top: 1rem; }
+.sidebar .nav-link { color: {{ sidebar_text_color }}; opacity: 0.8; padding: 0.75rem 1.5rem; display: flex; align-items: center; font-weight: 500; border-left: 3px solid transparent; transition: all 0.2s ease; }
+.sidebar .nav-link i { margin-right: 1rem; font-size: 1.2rem; }
+.sidebar .nav-link:hover { color: {{ sidebar_text_color }}; opacity: 1; background-color: rgba(0,0,0,0.1); }
+.sidebar .nav-link.active { color: #fff; opacity: 1; background-color: var(--secondary-color); border-left-color: #fff; font-weight: 600; }
+.top-navbar { background-color: #fff; border-radius: 0.5rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 2rem; }
+.top-navbar .nav-link { color: #555; font-weight: 500; }
+.top-navbar .nav-link.active { color: var(--secondary-color); font-weight: 600; border-bottom: 2px solid var(--secondary-color); }
+.card { border: none; border-radius: 0.75rem; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.card-header { background-color: #fff; border-bottom: 1px solid #eee; font-weight: 600; padding: 1rem 1.25rem; }
+.footer { text-align: center; padding: 1rem; color: #888; font-size: 0.9em; background-color: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); margin-top: 2rem; }
+.stat-card { color: white; border-radius: 0.75rem; padding: 1.5rem; }
+.stat-card h3 { font-size: 2.5rem; font-weight: 700; }
+.stat-card p { margin: 0; opacity: 0.9; }
+</style></head>
+<body><div class="wrapper">
+<nav class="sidebar">
+<div><div class="sidebar-header">
+{% if g.sys_config.logo_dark_bg_path %}
+    <img src="{{ url_for('uploaded_file', filename=g.sys_config.logo_dark_bg_path) }}" alt="Logo" class="logo" style="max-height: {{ g.sys_config.logo_size }}px;">
+{% endif %}
+<h5>{{ g.sys_config.company_name }}</h5></div>
+<ul class="nav flex-column">
+<li class="nav-item"><a class="nav-link {% if request.endpoint == 'gerar_form' %}active{% endif %}" href="{{ url_for('gerar_form') }}"><i class="bi bi-file-earmark-bar-graph"></i> Gerar Relatório</a></li>
+<li class="nav-item"><a class="nav-link {% if request.endpoint == 'history' %}active{% endif %}" href="{{ url_for('history') }}"><i class="bi bi-clock-history"></i> Histórico</a></li>
+{% if not current_user.has_role('client') %}
+<li class="nav-item"><a class="nav-link {% if 'admin' in request.endpoint %}active{% endif %}" href="{{ url_for('admin_dashboard') }}"><i class="bi bi-gear"></i> Administração</a></li>
+{% endif %}
+</ul></div>
+<div class="mt-auto p-3"><a href="{{ url_for('logout') }}" class="btn btn-outline-light w-100"><i class="bi bi-box-arrow-right"></i> Sair ({{ current_user.username }})</a></div>
+</nav>
+<main id="content">
+<div class="main-content">
+{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for category, message in messages %}
+<div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">{{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>
+{% endfor %}{% endif %}{% endwith %}
+{% block content %}{% endblock %}
+</div>
+<footer class="footer">{{ g.sys_config.footer_text|safe }}</footer>
+</main></div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body></html>

@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 # ==============================================================================
-# ZABBIX REPORTER - ENTERPRISE EDITION v20.9 FINAL (Report Builder)
+# ZABBIX REPORTER - ENTERPRISE EDITION v20.8 FINAL (Filtro de Interface)
 #
 # Autor: Marcio Bernardo, Conversys IT Solutions
 # Data: 15/08/2025
-# Descrição: Versão final com construtor de relatórios modular e dinâmico.
-#            Permite montar relatórios personalizados com módulos de dados e
-#            conteúdo customizado, com descoberta automática de
-#            compatibilidade.
+# Descrição: Adicionado filtro opcional de interface de rede para o relatório
+#            de desempenho, otimizando a coleta de dados e aumentando a precisão.
 # ==============================================================================
 
 # --- Importações Essenciais ---
@@ -56,6 +54,7 @@ except ImportError:
 load_dotenv()
 
 class Config:
+    """Configurações da aplicação Flask e Zabbix."""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'mude-esta-chave-secreta-em-producao-agora'
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///zabbix_reporter_v20.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -139,7 +138,7 @@ class Report(db.Model):
     reference_month = db.Column(db.String(7), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    report_type = db.Column(db.String(50), default='custom', nullable=False)
+    report_type = db.Column(db.String(50), default='servidores', nullable=False)
 
 class AuditLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -283,11 +282,7 @@ class ReportGenerator:
     def get_trends(self, itemids, time_from, time_till):
         self._update_status(f"Buscando tendências para {len(itemids)} itens...")
         body = {'jsonrpc': '2.0', 'method': 'trend.get', 'params': {'output': ['itemid', 'clock', 'num', 'value_min', 'value_avg', 'value_max'], 'itemids': itemids, 'time_from': time_from, 'time_till': time_till}, 'auth': self.token, 'id': 1}
-        trends = fazer_request_zabbix(body, self.url)
-        if not isinstance(trends, list):
-            app.logger.error(f"Falha ao buscar trends para {len(itemids)} itens. Resposta inválida do Zabbix.")
-            return []
-        return trends
+        return fazer_request_zabbix(body, self.url) or []
 
     def get_host_groups(self):
         body = {'jsonrpc': '2.0', 'method': 'hostgroup.get', 'params': {'output': ['groupid', 'name'], 'monitored_hosts': True}, 'auth': self.token, 'id': 1}
@@ -315,6 +310,7 @@ class ReportGenerator:
     def _collect_availability_data(self, all_hosts, period, sla_goal):
         all_host_ids = [h['hostid'] for h in all_hosts]
         
+        self._update_status("Coletando eventos de disponibilidade (PING)...")
         ping_items = self.get_items(all_host_ids, 'icmpping', search_by_key=True)
         if not ping_items:
             return None, "Nenhum item de monitoramento de PING ('icmpping') encontrado para este grupo."
@@ -332,10 +328,12 @@ class ReportGenerator:
         ping_events = self.obter_eventos_wrapper(ping_trigger_ids, period, 'objectids')
         if ping_events is None: return None, "Geração abortada: Falha na coleta de eventos de PING."
 
+        self._update_status("Correlacionando problemas de disponibilidade...")
         ping_problems = [p for p in ping_events if p.get('source') == '0' and p.get('object') == '0' and p.get('value') == '1']
         correlated_ping_problems = self._correlate_problems(ping_problems, ping_events)
         df_sla = pd.DataFrame(self._calculate_sla(correlated_ping_problems, hosts_for_sla, period))
 
+        self._update_status("Coletando todos eventos de problemas...")
         all_group_events = self.obter_eventos_wrapper(all_host_ids, period, 'hostids')
         if all_group_events is None: return None, "Geração abortada: Falha na coleta de eventos gerais do grupo."
         
@@ -361,77 +359,97 @@ class ReportGenerator:
             'kpis': kpis_html,
             'df_sla_problems': df_sla_problems,
             'df_top_incidents': df_top_incidents,
+            'df_sla': df_sla
         }, None
-    
-    def _process_trends(self, trends, items, host_map, unit_conversion_factor=1, is_pavailable=False):
-        if not isinstance(trends, list) or not trends:
-            return pd.DataFrame(columns=['Host', 'Min', 'Max', 'Avg'])
 
-        df = pd.DataFrame(trends)
-        df[['value_min', 'value_avg', 'value_max']] = df[['value_min', 'value_avg', 'value_max']].astype(float)
-        
-        item_to_host_map = {item['itemid']: item['hostid'] for item in items}
-        df['hostid'] = df['itemid'].map(item_to_host_map)
-
-        agg_results = df.groupby('hostid').agg(
-            Min=('value_min', 'sum'),
-            Max=('value_max', 'sum'),
-            Avg=('value_avg', 'sum')
-        ).reset_index()
-
-        if is_pavailable:
-            agg_results['Min_old'] = agg_results['Min']
-            agg_results['Max_old'] = agg_results['Max']
-            agg_results['Min'] = 100 - agg_results['Max_old']
-            agg_results['Max'] = 100 - agg_results['Min_old']
-            agg_results['Avg'] = 100 - agg_results['Avg']
-            agg_results.drop(columns=['Min_old', 'Max_old'], inplace=True)
-
-        for col in ['Min', 'Max', 'Avg']:
-            agg_results[col] *= unit_conversion_factor
-        
-        agg_results['Host'] = agg_results['hostid'].map(host_map)
-        return agg_results[['Host', 'Min', 'Max', 'Avg']]
-
-    def _collect_performance_data(self, all_hosts, period):
+    def _collect_cpe_performance_data(self, all_hosts, period, interface_name=None):
         host_ids = [h['hostid'] for h in all_hosts]
         host_map = {h['hostid']: h['nome_visivel'] for h in all_hosts}
 
+        # 1. Coletar dados de CPU
+        self._update_status("Coletando dados de CPU...")
         cpu_items = self.get_items(host_ids, 'system.cpu.util', search_by_key=True)
-        if not cpu_items: return None, "Nenhum item de CPU ('system.cpu.util') encontrado."
-        cpu_trends = self.get_trends([item['itemid'] for item in cpu_items], period['start'], period['end'])
-        df_cpu = self._process_trends(cpu_trends, cpu_items, host_map)
-
+        if not cpu_items: return None, "Nenhum item de CPU ('system.cpu.util') encontrado para este grupo."
+        cpu_item_ids = [item['itemid'] for item in cpu_items]
+        cpu_trends = self.get_trends(cpu_item_ids, period['start'], period['end'])
+        
+        # 2. Coletar dados de Memória (com fallback)
+        self._update_status("Coletando dados de Memória...")
         mem_items = self.get_items(host_ids, 'vm.memory.size[pused]', search_by_key=True)
-        mem_pavailable = False
+        memory_is_pavailable = False
         if not mem_items:
+            self._update_status("Item 'pused' não encontrado, tentando 'pavailable'...")
             mem_items = self.get_items(host_ids, 'vm.memory.size[pavailable]', search_by_key=True)
-            mem_pavailable = True
-        if not mem_items: return None, "Nenhum item de Memória ('vm.memory.size[pused]' ou '[pavailable]') encontrado."
-        mem_trends = self.get_trends([item['itemid'] for item in mem_items], period['start'], period['end'])
-        df_mem = self._process_trends(mem_trends, mem_items, host_map, is_pavailable=mem_pavailable)
+            memory_is_pavailable = True
 
-        return {'df_cpu': df_cpu, 'df_mem': df_mem}, None
+        if not mem_items: 
+            return None, "Nenhum item de Memória ('vm.memory.size[pused]' ou 'pavailable') encontrado."
+        
+        mem_item_ids = [item['itemid'] for item in mem_items]
+        mem_trends = self.get_trends(mem_item_ids, period['start'], period['end'])
 
-    def _collect_traffic_data(self, all_hosts, period, interface_name=None):
-        host_ids = [h['hostid'] for h in all_hosts]
-        host_map = {h['hostid']: h['nome_visivel'] for h in all_hosts}
-
+        # 3. Coletar dados de Tráfego de Rede com filtro de interface
+        self._update_status("Coletando dados de Tráfego de Rede...")
         net_in_key = f"net.if.in[{interface_name}]" if interface_name else "net.if.in"
         net_out_key = f"net.if.out[{interface_name}]" if interface_name else "net.if.out"
 
         net_in_items = self.get_items(host_ids, net_in_key, search_by_key=True)
         net_out_items = self.get_items(host_ids, net_out_key, search_by_key=True)
-        if not net_in_items: return None, f"Nenhum item de tráfego de rede com a chave '{net_in_key}' foi encontrado."
+        if not net_in_items: 
+            return None, f"Nenhum item de tráfego de rede com a chave '{net_in_key}' foi encontrado."
+        
+        net_in_ids = [item['itemid'] for item in net_in_items]
+        net_out_ids = [item['itemid'] for item in net_out_items]
+        net_in_trends = self.get_trends(net_in_ids, period['start'], period['end'])
+        net_out_trends = self.get_trends(net_out_ids, period['start'], period['end'])
 
-        net_in_trends = self.get_trends([item['itemid'] for item in net_in_items], period['start'], period['end'])
-        net_out_trends = self.get_trends([item['itemid'] for item in net_out_items], period['start'], period['end'])
+        # Processar dados
+        self._update_status("Processando dados coletados...")
+        
+        def process_trends(trends, items, unit_conversion_factor=1, is_pavailable=False):
+            df = pd.DataFrame(trends)
+            if df.empty: return pd.DataFrame(columns=['hostid', 'Min', 'Max', 'Avg'])
+            df[['value_min', 'value_avg', 'value_max']] = df[['value_min', 'value_avg', 'value_max']].astype(float)
+            
+            item_to_host_map = {item['itemid']: item['hostid'] for item in items}
+            df['hostid'] = df['itemid'].map(item_to_host_map)
 
+            # Agrupa por host e agrega os resultados. Se houver múltiplas interfaces, soma os valores.
+            agg_results = df.groupby('hostid').agg(
+                Min=('value_min', 'sum'),
+                Max=('value_max', 'sum'),
+                Avg=('value_avg', 'sum')
+            ).reset_index()
+
+            if is_pavailable:
+                agg_results['Min_old'] = agg_results['Min']
+                agg_results['Max_old'] = agg_results['Max']
+                agg_results['Min'] = 100 - agg_results['Max_old']
+                agg_results['Max'] = 100 - agg_results['Min_old']
+                agg_results['Avg'] = 100 - agg_results['Avg']
+                agg_results.drop(columns=['Min_old', 'Max_old'], inplace=True)
+
+            for col in ['Min', 'Max', 'Avg']:
+                agg_results[col] *= unit_conversion_factor
+
+            return agg_results
+
+        df_cpu = process_trends(cpu_trends, cpu_items)
+        df_mem = process_trends(mem_trends, mem_items, is_pavailable=memory_is_pavailable)
+        
         BPS_TO_MBPS = 8 / 1_000_000 
-        df_net_in = self._process_trends(net_in_trends, net_in_items, host_map, BPS_TO_MBPS)
-        df_net_out = self._process_trends(net_out_trends, net_out_items, host_map, BPS_TO_MBPS)
+        df_net_in = process_trends(net_in_trends, net_in_items, BPS_TO_MBPS)
+        df_net_out = process_trends(net_out_trends, net_out_items, BPS_TO_MBPS)
 
-        return {'df_net_in': df_net_in, 'df_net_out': df_net_out}, None
+        for df in [df_cpu, df_mem, df_net_in, df_net_out]:
+            if not df.empty:
+                df['Host'] = df['hostid'].map(host_map)
+                df.drop('hostid', axis=1, inplace=True)
+                df = df[['Host', 'Min', 'Max', 'Avg']]
+
+        return {
+            'df_cpu': df_cpu, 'df_mem': df_mem, 'df_net_in': df_net_in, 'df_net_out': df_net_out
+        }, None
 
     @staticmethod
     def _correlate_problems(problems, all_events):
@@ -542,7 +560,7 @@ class ReportGenerator:
         buffer.seek(0)
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-    def generate(self, client, ref_month_str, system_config, author, report_layout_json):
+    def generate(self, client, ref_month_str, system_config, author, report_type, interface_name=None):
         sla_goal = client.sla_contract
         try:
             ref_date = dt.datetime.strptime(f'{ref_month_str}-01', '%Y-%m-%d')
@@ -561,102 +579,59 @@ class ReportGenerator:
         all_hosts = self.get_hosts(group_ids)
         if not all_hosts: return None, f"Nenhum host encontrado para os grupos Zabbix associados ao cliente {client.name}."
 
-        report_layout = json.loads(report_layout_json)
-        
-        final_html_parts = []
-        dados_gerais = {
-            'group_name': client.name,
-            'periodo_referencia': start_date.strftime('%B de %Y').capitalize(),
-            'data_emissao': dt.datetime.now().strftime('%d/%m/%Y'),
+        dados_miolo = {
+            'group_name': client.name, 'periodo_referencia': start_date.strftime('%B de %Y').capitalize(), 'data_emissao': dt.datetime.now().strftime('%d/%m/%Y'),
         }
 
-        cached_data = {'all_hosts': all_hosts}
-
-        for module in report_layout:
-            module_type = module.get('type')
-            custom_title = module.get('title')
-            
-            self._update_status(f"Processando módulo: {module_type}...")
-            
-            try:
-                html_part = ""
-                if module_type in ['sla', 'top_hosts', 'top_problems']:
-                    if 'availability_data' not in cached_data:
-                        cached_data['availability_data'], error_msg = self._collect_availability_data(all_hosts, period, sla_goal)
-                        if error_msg: return None, error_msg
-                    
-                    data = cached_data['availability_data']
-                    if module_type == 'sla':
-                        df_sla_problems = data['df_sla_problems']
-                        module_data = {
-                            'kpis': data['kpis'],
-                            'tabela_sla_problemas': self._generate_html_sla_table(df_sla_problems, sla_goal),
-                            'total_hosts': len(all_hosts),
-                            'hosts_com_falha_sla': df_sla_problems.shape[0]
-                        }
-                        html_part = render_template('modules/sla.html', title=custom_title, data=module_data)
-                    
-                    elif module_type == 'top_hosts':
-                        df_top_downtime = data['df_sla_problems'].sort_values(by='SLA (%)', ascending=True).head(10)
-                        df_top_downtime['soma_duracao_segundos'] = df_top_downtime['Tempo Indisponível'].apply(lambda x: pd.to_timedelta(x).total_seconds())
-                        df_top_downtime['soma_duracao_horas'] = df_top_downtime['soma_duracao_segundos'] / 3600
-                        module_data = { 'grafico': self._generate_chart(df_top_downtime, 'soma_duracao_horas', 'Host', 'Top 10 Hosts com Maior Indisponibilidade', 'Total de Horas Indisponível', system_config.secondary_color) }
-                        html_part = render_template('modules/top_hosts.html', title=custom_title, data=module_data)
-
-                    elif module_type == 'top_problems':
-                        df_top_incidents = data['df_top_incidents']
-                        module_data = { 'grafico': self._generate_chart(df_top_incidents.assign(Incidente=df_top_incidents['Host'] + ' - ' + df_top_incidents['Problema']), 'Ocorrências', 'Incidente', 'Top 10 Incidentes', 'Número de Ocorrências', system_config.secondary_color) }
-                        html_part = render_template('modules/top_problems.html', title=custom_title, data=module_data)
-
-                elif module_type in ['cpu', 'mem']:
-                    if 'performance_data' not in cached_data:
-                        cached_data['performance_data'], error_msg = self._collect_performance_data(all_hosts, period)
-                        if error_msg: return None, error_msg
-                    
-                    data = cached_data['performance_data']
-                    if module_type == 'cpu':
-                        df_cpu = data['df_cpu']
-                        module_data = { 'tabela': df_cpu.to_html(classes='table', index=False, float_format='%.2f'), 'grafico': self._generate_multi_bar_chart(df_cpu, 'Ocupação de CPU (%)', 'Uso de CPU (%)', ['#ff9999', '#ff4d4d', '#b30000']) }
-                        html_part = render_template('modules/cpu.html', title=custom_title, data=module_data)
-                    
-                    elif module_type == 'mem':
-                        df_mem = data['df_mem']
-                        module_data = { 'tabela': df_mem.to_html(classes='table', index=False, float_format='%.2f'), 'grafico': self._generate_multi_bar_chart(df_mem, 'Ocupação de Memória (%)', 'Uso de Memória (%)', ['#99ccff', '#4da6ff', '#0059b3']) }
-                        html_part = render_template('modules/mem.html', title=custom_title, data=module_data)
-
-                elif module_type in ['traffic_in', 'traffic_out']:
-                    if 'traffic_data' not in cached_data:
-                        interface = module.get('interface')
-                        cached_data['traffic_data'], error_msg = self._collect_traffic_data(all_hosts, period, interface)
-                        if error_msg: return None, error_msg
-                    
-                    data = cached_data['traffic_data']
-                    if module_type == 'traffic_in':
-                        df_net_in = data['df_net_in']
-                        module_data = { 'tabela': df_net_in.to_html(classes='table', index=False, float_format='%.4f'), 'grafico': self._generate_multi_bar_chart(df_net_in, 'Tráfego de Entrada (Mbps)', 'Mbps', ['#ffc266', '#ffa31a', '#e68a00']) }
-                        html_part = render_template('modules/traffic_in.html', title=custom_title, data=module_data)
-
-                    elif module_type == 'traffic_out':
-                        df_net_out = data['df_net_out']
-                        module_data = { 'tabela': df_net_out.to_html(classes='table', index=False, float_format='%.4f'), 'grafico': self._generate_multi_bar_chart(df_net_out, 'Tráfego de Saída (Mbps)', 'Mbps', ['#85e085', '#33cc33', '#248f24']) }
-                        html_part = render_template('modules/traffic_out.html', title=custom_title, data=module_data)
-
-                elif module_type == 'inventory':
-                    module_data = {'tabela': pd.DataFrame(all_hosts)[['nome_visivel', 'ip0']].rename(columns={'nome_visivel': 'Host', 'ip0': 'IP'}).to_html(classes='table', index=False, border=0)}
-                    html_part = render_template('modules/inventory.html', title=custom_title, data=module_data)
-
-                elif module_type == 'html':
-                    module_data = {'content': module.get('content', '')}
-                    html_part = render_template('modules/custom_html.html', title=custom_title, data=module_data)
+        error_msg = None
+        if report_type in ['servidores', 'links']:
+            availability_data, error_msg = self._collect_availability_data(all_hosts, period, sla_goal)
+            if not error_msg and availability_data:
+                df_sla_problems = availability_data['df_sla_problems']
+                df_top_incidents = availability_data['df_top_incidents']
+                df_sla = availability_data['df_sla']
+                df_top_downtime = df_sla_problems.sort_values(by='SLA (%)', ascending=True).head(10)
+                df_top_downtime['soma_duracao_segundos'] = df_top_downtime['Tempo Indisponível'].apply(lambda x: pd.to_timedelta(x).total_seconds())
+                df_top_downtime['soma_duracao_horas'] = df_top_downtime['soma_duracao_segundos'] / 3600
                 
-                final_html_parts.append(html_part)
+                dados_miolo.update({
+                    'total_hosts': len(all_hosts), 'hosts_com_falha_sla': df_sla_problems.shape[0],
+                    'kpis': availability_data['kpis'],
+                    'tabela_sla_problemas': self._generate_html_sla_table(df_sla_problems, sla_goal),
+                    'tabela_lista_hosts': pd.DataFrame(all_hosts)[['nome_visivel', 'ip0']].rename(columns={'nome_visivel': 'Host', 'ip0': 'IP'}).to_html(classes='table', index=False, border=0),
+                    'grafico_top_hosts': self._generate_chart(df_top_downtime, 'soma_duracao_horas', 'Host', 'Top 10 Hosts com Maior Indisponibilidade', 'Total de Horas Indisponível', system_config.secondary_color),
+                    'grafico_top_problemas': self._generate_chart(df_top_incidents.assign(Incidente=df_top_incidents['Host'] + ' - ' + df_top_incidents['Problema']), 'Ocorrências', 'Incidente', 'Top 10 Incidentes', 'Número de Ocorrências', system_config.secondary_color)
+                })
 
-            except Exception as e:
-                app.logger.error(f"Erro ao processar módulo {module_type}: {e}")
-                return None, f"Falha ao processar módulo {module_type}."
+        elif report_type == 'rede_cpe':
+            performance_data, error_msg = self._collect_cpe_performance_data(all_hosts, period, interface_name)
+            if not error_msg and performance_data:
+                df_cpu = performance_data['df_cpu']
+                df_mem = performance_data['df_mem']
+                df_net_in = performance_data['df_net_in']
+                df_net_out = performance_data['df_net_out']
+                
+                dados_miolo.update({
+                    'tabela_cpu': df_cpu.to_html(classes='table', index=False, float_format='%.2f'),
+                    'tabela_mem': df_mem.to_html(classes='table', index=False, float_format='%.2f'),
+                    'tabela_net_in': df_net_in.to_html(classes='table', index=False, float_format='%.4f'),
+                    'tabela_net_out': df_net_out.to_html(classes='table', index=False, float_format='%.4f'),
+                    'grafico_cpu': self._generate_multi_bar_chart(df_cpu, 'Ocupação de CPU (%)', 'Uso de CPU (%)', ['#ff9999', '#ff4d4d', '#b30000']),
+                    'grafico_mem': self._generate_multi_bar_chart(df_mem, 'Ocupação de Memória (%)', 'Uso de Memória (%)', ['#99ccff', '#4da6ff', '#0059b3']),
+                    'grafico_net_in': self._generate_multi_bar_chart(df_net_in, 'Tráfego de Entrada (Mbps)', 'Mbps', ['#ffc266', '#ffa31a', '#e68a00']),
+                    'grafico_net_out': self._generate_multi_bar_chart(df_net_out, 'Tráfego de Saída (Mbps)', 'Mbps', ['#85e085', '#33cc33', '#248f24'])
+                })
 
-        dados_gerais['report_content'] = "".join(final_html_parts)
-        miolo_html = render_template('_MIOLO_BASE.html', **dados_gerais)
+        if error_msg:
+            return None, error_msg
+
+        self._update_status("Gerando PDF do conteúdo principal...")
+        template_name = f"_MIOLO_{report_type.upper()}.html"
+        try:
+            miolo_html = render_template(template_name, **dados_miolo)
+        except TemplateNotFound:
+            app.logger.warning(f"Template '{template_name}' não encontrado. Usando template padrão.")
+            miolo_html = render_template('_MIOLO_DEFAULT.html', **dados_miolo)
         
         miolo_pdf_path = os.path.join(app.config['GENERATED_REPORTS_FOLDER'], f"temp_miolo_{self.task_id}.pdf")
         with open(miolo_pdf_path, "w+b") as pdf_file:
@@ -686,7 +661,7 @@ class ReportGenerator:
             except PyPDF2Errors.PdfReadError:
                 return None, "Arquivo de página final corrompido ou inválido."
 
-        pdf_filename = f'Relatorio_Custom_{client.name.replace(" ", "_")}_{ref_month_str}_{uuid.uuid4().hex[:8]}.pdf'
+        pdf_filename = f'Relatorio_{report_type.capitalize()}_{client.name.replace(" ", "_")}_{ref_month_str}_{uuid.uuid4().hex[:8]}.pdf'
         pdf_path = os.path.join(app.config['GENERATED_REPORTS_FOLDER'], pdf_filename)
         
         with open(pdf_path, "wb") as f:
@@ -697,11 +672,11 @@ class ReportGenerator:
         except OSError as e:
             app.logger.warning(f"Não foi possível remover arquivo temporário: {e}")
 
-        report_record = Report(filename=pdf_filename, file_path=pdf_path, reference_month=ref_month_str, user_id=author.id, client_id=client.id, report_type='custom')
+        report_record = Report(filename=pdf_filename, file_path=pdf_path, reference_month=ref_month_str, user_id=author.id, client_id=client.id, report_type=report_type)
         db.session.add(report_record)
         db.session.commit()
         
-        AuditService.log(f"Gerou relatório customizado para '{client.name}' referente a {ref_month_str}", user=author)
+        AuditService.log(f"Gerou relatório ({report_type}) para o cliente '{client.name}' referente a {ref_month_str}", user=author)
         return pdf_path, None
 
 # --- Hooks e Funções de Suporte da Aplicação ---
@@ -775,15 +750,19 @@ def gerar_form():
         clients = Client.query.order_by(Client.name).all()
     return render_template('gerar_form.html', title="Gerar Relatório", clients=clients)
 
-def run_generation_in_thread(app_context, task_id, client_id, ref_month, user_id, report_layout_json):
+def run_generation_in_thread(app_context, task_id, client_id, ref_month, user_id, report_type, interface_name):
     with app_context:
         try:
             system_config = SystemConfig.query.first()
-            client = db.session.get(Client, int(client_id))
+            if not system_config:
+                update_status(task_id, "Erro: Configuração do sistema não encontrada.")
+                return
+
             author = db.session.get(User, user_id)
+            client = db.session.get(Client, int(client_id))
             
-            if not all([system_config, client, author]) or (author.has_role('client') and client not in author.clients):
-                update_status(task_id, "Erro: Dados inválidos ou não autorizados.")
+            if not client or (author.has_role('client') and client not in author.clients):
+                update_status(task_id, "Erro: Cliente inválido ou não autorizado.")
                 return
 
             config_zabbix, erro_zabbix_config = obter_config_e_token_zabbix(app.config, task_id)
@@ -792,8 +771,7 @@ def run_generation_in_thread(app_context, task_id, client_id, ref_month, user_id
                 return
 
             generator = ReportGenerator(config_zabbix, task_id)
-            # A interface_name é extraída do JSON dentro do generate agora
-            pdf_path, error = generator.generate(client, ref_month, system_config, author, report_layout_json)
+            pdf_path, error = generator.generate(client, ref_month, system_config, author, report_type, interface_name)
 
             if error:
                 update_status(task_id, f"Erro: {error}")
@@ -816,9 +794,10 @@ def gerar_relatorio():
     
     client_id = request.form.get('client_id')
     ref_month = request.form.get('mes_ref')
-    report_layout_json = request.form.get('report_layout')
+    report_type = request.form.get('report_type', 'servidores')
+    interface_name = request.form.get('interface_name')
 
-    thread = threading.Thread(target=run_generation_in_thread, args=(app.app_context(), task_id, client_id, ref_month, current_user.id, report_layout_json))
+    thread = threading.Thread(target=run_generation_in_thread, args=(app.app_context(), task_id, client_id, ref_month, current_user.id, report_type, interface_name))
     thread.daemon = True
     thread.start()
     
@@ -1116,49 +1095,43 @@ def admin_test_zabbix():
         AuditService.log(f"Teste de conexão Zabbix: FALHA ({error})")
     return redirect(url_for('admin_customize'))
 
-@app.route('/admin/get_available_modules/<int:client_id>')
+@app.route('/admin/get_valid_report_types/<int:client_id>')
 @login_required
-def get_available_modules(client_id):
+def get_valid_report_types(client_id):
     client = db.session.get(Client, client_id)
     if not client or not client.zabbix_groups:
-        return jsonify({'available_modules': []})
+        return jsonify({'valid_types': []})
 
     group_ids = [g.zabbix_group_id for g in client.zabbix_groups]
     
     config_zabbix, erro = obter_config_e_token_zabbix(app.config)
     if erro:
+        app.logger.error(f"Validation check failed for client {client_id}: Zabbix connection error - {erro}")
         return jsonify({'error': 'Zabbix connection failed'}), 500
 
     body = {'jsonrpc': '2.0', 'method': 'host.get', 'params': {'groupids': group_ids, 'output': ['hostid']}, 'auth': config_zabbix['ZABBIX_TOKEN'], 'id': 1}
     hosts = fazer_request_zabbix(body, config_zabbix['ZABBIX_URL'])
     
     if not isinstance(hosts, list) or not hosts:
-        return jsonify({'available_modules': []})
+        app.logger.warning(f"Validation check: No hosts found for client {client_id} in groups {group_ids}.")
+        return jsonify({'valid_types': []})
 
     hostids = [h['hostid'] for h in hosts]
+    valid_types = []
     
-    def check_key(key):
-        body_item = {'jsonrpc': '2.0', 'method': 'item.get', 'params': {'output': 'itemid', 'hostids': hostids, 'search': {'key_': key}, 'limit': 1}, 'auth': config_zabbix['ZABBIX_TOKEN'], 'id': 1}
-        items = fazer_request_zabbix(body_item, config_zabbix['ZABBIX_URL'])
-        return isinstance(items, list) and len(items) > 0
+    required_keys = {
+        'servidores': 'icmpping',
+        'links': 'icmpping',
+        'rede_cpe': 'net.if.in'
+    }
 
-    available_modules = []
-    if check_key('icmpping'):
-        available_modules.append({'type': 'sla', 'name': 'Disponibilidade (SLA)'})
-        available_modules.append({'type': 'top_hosts', 'name': 'Top Hosts Indisponíveis'})
-        available_modules.append({'type': 'top_problems', 'name': 'Top Incidentes'})
-    if check_key('system.cpu.util'):
-        available_modules.append({'type': 'cpu', 'name': 'Desempenho de CPU'})
-    if check_key('vm.memory.size[pused]') or check_key('vm.memory.size[pavailable]'):
-         available_modules.append({'type': 'mem', 'name': 'Desempenho de Memória'})
-    if check_key('net.if.in'):
-        available_modules.append({'type': 'traffic_in', 'name': 'Tráfego de Entrada'})
-        available_modules.append({'type': 'traffic_out', 'name': 'Tráfego de Saída'})
+    for report_type, key_to_check in required_keys.items():
+        body_item = {'jsonrpc': '2.0', 'method': 'item.get', 'params': {'output': 'itemid', 'hostids': hostids, 'search': {'key_': key_to_check}, 'limit': 1}, 'auth': config_zabbix['ZABBIX_TOKEN'], 'id': 1}
+        items = fazer_request_zabbix(body_item, config_zabbix['ZABBIX_URL'])
+        if isinstance(items, list) and len(items) > 0:
+            valid_types.append(report_type)
     
-    available_modules.append({'type': 'inventory', 'name': 'Inventário de Hosts'})
-    available_modules.append({'type': 'html', 'name': 'Texto/HTML Customizado'})
-    
-    return jsonify({'available_modules': available_modules})
+    return jsonify({'valid_types': valid_types})
 
 
 # --- Bloco de Execução Principal ---

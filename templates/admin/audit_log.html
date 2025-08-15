@@ -1,0 +1,14 @@
+{% extends 'admin/base.html' %}
+{% block title %}Log de Auditoria{% endblock %}
+{% block admin_content %}
+<div class="card"><div class="card-header">Log de Auditoria</div>
+<div class="card-body"><div class="table-responsive">
+<table class="table table-sm table-hover">
+<thead><tr><th>Data/Hora (UTC)</th><th>Usuário</th><th>Ação</th></tr></thead>
+<tbody>
+{% for log in logs %}
+<tr><td>{{ log.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}</td><td>{{ log.username }}</td><td>{{ log.action }}</td></tr>
+{% else %}
+<tr><td colspan="3" class="text-center text-muted p-4">Nenhum registro de auditoria encontrado.</td></tr>
+{% endfor %}</tbody></table></div></div></div>
+{% endblock %}

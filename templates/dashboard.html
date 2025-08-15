@@ -1,0 +1,62 @@
+{% extends 'admin/base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block admin_content %}
+<div class="row">
+    <div class="col-md-6 col-xl-3 mb-4">
+        <div class="stat-card" style="background-color: #2980b9;">
+            <h3>{{ stats.users }}</h3><p>Total de Usuários</p>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3 mb-4">
+        <div class="stat-card" style="background-color: #27ae60;">
+            <h3>{{ stats.clients }}</h3><p>Total de Clientes</p>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3 mb-4">
+        <div class="stat-card" style="background-color: #f39c12;">
+            <h3>{{ stats.reports_total }}</h3><p>Relatórios Gerados</p>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3 mb-4">
+        <div class="stat-card" style="background-color: #8e44ad;">
+            <h3>{{ stats.reports_month }}</h3><p>Relatórios este Mês</p>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">Últimos Relatórios Gerados</div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                {% for report in latest_reports %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div><strong>{{ report.client.name }}</strong> ({{ report.report_type.replace('_', ' ')|title }})<br><small class="text-muted">Por {{ report.author.username }} em {{ report.created_at.strftime('%d/%m/%Y') }}</small></div>
+                        <a href="{{ url_for('download_report', report_id=report.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download"></i></a>
+                    </li>
+                {% else %}
+                    <li class="list-group-item text-center text-muted">Nenhum relatório gerado ainda.</li>
+                {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">Últimos Usuários Adicionados</div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                {% for user in latest_users %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        {{ user.username }}
+                        <span class="badge bg-secondary rounded-pill">{{ user.role.name }}</span>
+                    </li>
+                {% else %}
+                    <li class="list-group-item text-center text-muted">Nenhum usuário recente.</li>
+                {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
