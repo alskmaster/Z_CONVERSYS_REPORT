@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 # ==============================================================================
-# ZABBIX REPORTER - ENTERPRISE EDITION v20.9.2 FINAL (Correção de Geração de PDF)
+# ZABBIX REPORTER - ENTERPRISE EDITION v20.9.3 FINAL (Coleta Modular)
 #
 # Autor: Marcio Bernardo, Conversys IT Solutions
 # Data: 15/08/2025
-# Descrição: Corrigido o método de montagem de PDF e restaurada a lógica
-#            de atualização de status no frontend.
+# Descrição: Corrigida a lógica de coleta de dados para ser verdadeiramente
+#            modular, buscando apenas os dados dos módulos selecionados pelo
+#            usuário e evitando erros por dados agrupados.
 # ==============================================================================
 
 # --- Importações Essenciais ---
@@ -391,15 +392,18 @@ class ReportGenerator:
         agg_results['Host'] = agg_results['hostid'].map(host_map)
         return agg_results[['Host', 'Min', 'Max', 'Avg']]
 
-    def _collect_performance_data(self, all_hosts, period):
+    def _collect_cpu_data(self, all_hosts, period):
         host_ids = [h['hostid'] for h in all_hosts]
         host_map = {h['hostid']: h['nome_visivel'] for h in all_hosts}
-
         cpu_items = self.get_items(host_ids, 'system.cpu.util', search_by_key=True)
         if not cpu_items: return None, "Nenhum item de CPU ('system.cpu.util') encontrado."
         cpu_trends = self.get_trends([item['itemid'] for item in cpu_items], period['start'], period['end'])
         df_cpu = self._process_trends(cpu_trends, cpu_items, host_map)
+        return {'df_cpu': df_cpu}, None
 
+    def _collect_mem_data(self, all_hosts, period):
+        host_ids = [h['hostid'] for h in all_hosts]
+        host_map = {h['hostid']: h['nome_visivel'] for h in all_hosts}
         mem_items = self.get_items(host_ids, 'vm.memory.size[pused]', search_by_key=True)
         mem_pavailable = False
         if not mem_items:
@@ -408,8 +412,7 @@ class ReportGenerator:
         if not mem_items: return None, "Nenhum item de Memória ('vm.memory.size[pused]' ou '[pavailable]') encontrado."
         mem_trends = self.get_trends([item['itemid'] for item in mem_items], period['start'], period['end'])
         df_mem = self._process_trends(mem_trends, mem_items, host_map, is_pavailable=mem_pavailable)
-
-        return {'df_cpu': df_cpu, 'df_mem': df_mem}, None
+        return {'df_mem': df_mem}, None
 
     def _collect_traffic_data(self, all_hosts, period, interface_name=None):
         host_ids = [h['hostid'] for h in all_hosts]
@@ -606,21 +609,23 @@ class ReportGenerator:
                         module_data = { 'grafico': self._generate_chart(df_top_incidents.assign(Incidente=df_top_incidents['Host'] + ' - ' + df_top_incidents['Problema']), 'Ocorrências', 'Incidente', 'Top 10 Incidentes', 'Número de Ocorrências', system_config.secondary_color) }
                         html_part = render_template('modules/top_problems.html', title=custom_title, data=module_data)
 
-                elif module_type in ['cpu', 'mem']:
-                    if 'performance_data' not in cached_data:
-                        cached_data['performance_data'], error_msg = self._collect_performance_data(all_hosts, period)
+                elif module_type == 'cpu':
+                    if 'cpu_data' not in cached_data:
+                        cached_data['cpu_data'], error_msg = self._collect_cpu_data(all_hosts, period)
                         if error_msg: return None, error_msg
-                    
-                    data = cached_data['performance_data']
-                    if module_type == 'cpu':
-                        df_cpu = data['df_cpu']
-                        module_data = { 'tabela': df_cpu.to_html(classes='table', index=False, float_format='%.2f'), 'grafico': self._generate_multi_bar_chart(df_cpu, 'Ocupação de CPU (%)', 'Uso de CPU (%)', ['#ff9999', '#ff4d4d', '#b30000']) }
-                        html_part = render_template('modules/cpu.html', title=custom_title, data=module_data)
-                    
-                    elif module_type == 'mem':
-                        df_mem = data['df_mem']
-                        module_data = { 'tabela': df_mem.to_html(classes='table', index=False, float_format='%.2f'), 'grafico': self._generate_multi_bar_chart(df_mem, 'Ocupação de Memória (%)', 'Uso de Memória (%)', ['#99ccff', '#4da6ff', '#0059b3']) }
-                        html_part = render_template('modules/mem.html', title=custom_title, data=module_data)
+                    data = cached_data['cpu_data']
+                    df_cpu = data['df_cpu']
+                    module_data = { 'tabela': df_cpu.to_html(classes='table', index=False, float_format='%.2f'), 'grafico': self._generate_multi_bar_chart(df_cpu, 'Ocupação de CPU (%)', 'Uso de CPU (%)', ['#ff9999', '#ff4d4d', '#b30000']) }
+                    html_part = render_template('modules/cpu.html', title=custom_title, data=module_data)
+                
+                elif module_type == 'mem':
+                    if 'mem_data' not in cached_data:
+                        cached_data['mem_data'], error_msg = self._collect_mem_data(all_hosts, period)
+                        if error_msg: return None, error_msg
+                    data = cached_data['mem_data']
+                    df_mem = data['df_mem']
+                    module_data = { 'tabela': df_mem.to_html(classes='table', index=False, float_format='%.2f'), 'grafico': self._generate_multi_bar_chart(df_mem, 'Ocupação de Memória (%)', 'Uso de Memória (%)', ['#99ccff', '#4da6ff', '#0059b3']) }
+                    html_part = render_template('modules/mem.html', title=custom_title, data=module_data)
 
                 elif module_type in ['traffic_in', 'traffic_out']:
                     interface = module.get('interface')
