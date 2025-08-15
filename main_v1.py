@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 # ==============================================================================
-# ZABBIX REPORTER - ENTERPRISE EDITION v20.9.5 FINAL (Controle de Paginação)
+# ZABBIX REPORTER - ENTERPRISE EDITION v20.9.6 (KPI as Image)
 #
 # Autor: Marcio Bernardo, Conversys IT Solutions
 # Data: 15/08/2025
-# Descrição: Adicionada opção de "Iniciar em Nova Página" para cada módulo
-#            no construtor de relatórios, dando controle total sobre a paginação.
+# Descrição: Módulo KPI agora é gerado como imagem para garantir design consistente.
 # ==============================================================================
 
 # --- Importações Essenciais ---
@@ -43,6 +42,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from xhtml2pdf import pisa
 from PyPDF2 import PdfWriter, PdfReader, errors as PyPDF2Errors
+
+import imgkit
 
 try:
     import urllib3
@@ -344,8 +345,6 @@ class ReportGenerator:
         avg_sla = df_sla['SLA (%)'].mean() if not df_sla.empty else 100.0
         principal_ofensor = df_top_incidents.iloc[0]['Host'] if not df_top_incidents.empty else "Nenhum"
         
-        # --- ALTERAÇÃO APLICADA AQUI ---
-        # Trocamos o HTML gerado aqui por uma estrutura de dados (lista de dicionários)
         kpis_data = [
             {
                 'label': f"Média de SLA ({len(hosts_for_sla)} Hosts)",
@@ -610,7 +609,32 @@ class ReportGenerator:
                     
                     data = cached_data['availability_data']
                     if module_type == 'kpi':
-                        module_data = {'kpis': data['kpis']}
+                        self._update_status("Gerando imagem do painel de KPIs...")
+                        kpi_img_b64 = None
+                        temp_img_path = os.path.join(app.config['GENERATED_REPORTS_FOLDER'], f"temp_kpi_{self.task_id}.png")
+                        
+                        try:
+                            path_wkhtmltoimage = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltoimage.exe'
+                            config = imgkit.config(wkhtmltoimage=path_wkhtmltoimage)
+
+                            kpi_image_html = render_template('modules/_kpi_para_imagem.html', kpis_data=data['kpis'])
+                            
+                            # --- ALTERAÇÃO APLICADA AQUI ---
+                            options = {'width': 540, 'disable-smart-width': ''} # Largura reduzida
+                            
+                            imgkit.from_string(kpi_image_html, temp_img_path, options=options, config=config)
+                            
+                            with open(temp_img_path, "rb") as img_file:
+                                kpi_img_b64 = base64.b64encode(img_file.read()).decode('utf-8')
+                        
+                        except Exception as e:
+                            app.logger.error(f"Falha ao gerar imagem do KPI com imgkit: {e}")
+                            return None, "Falha ao gerar imagem do painel de KPIs. Verifique se 'wkhtmltoimage' está instalado e no PATH do sistema."
+                        finally:
+                            if os.path.exists(temp_img_path):
+                                os.remove(temp_img_path)
+
+                        module_data = {'kpi_image_base64': kpi_img_b64}
                         html_part = render_template('modules/kpi.html', title=custom_title, data=module_data, new_page=new_page)
 
                     elif module_type == 'sla':

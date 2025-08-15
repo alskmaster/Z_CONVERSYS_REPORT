@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>KPIs para Imagem</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #fff;
+        }
+        .kpi-grid {
+            display: -webkit-flex;
+            display: flex;
+            -webkit-flex-direction: column;
+            flex-direction: column;
+            padding: 8px;
+        }
+        
+        .kpi-card {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 12px 15px;
+            box-sizing: border-box;
+            margin-bottom: 8px;
+            border-left-width: 5px;
+            width: 100%;
+            display: -webkit-flex;
+            display: flex;
+            -webkit-flex-direction: column;
+            flex-direction: column;
+            justify-content: center;
+            text-align: center; /* <-- MÁGICA FINAL APLICADA AQUI */
+        }
+
+        .kpi-card:last-child {
+            margin-bottom: 0;
+        }
+        
+        .kpi-card.status-atingido { border-left-color: #28a745; }
+        .kpi-card.status-nao-atingido { border-left-color: #dc3545; }
+        .kpi-card.status-critico { border-left-color: #ffc107; }
+        .kpi-card.status-ok { border-left-color: #17a2b8; }
+        .kpi-card.status-info { border-left-color: #6c757d; }
+        
+        .kpi-value {
+            font-size: 2.2em;
+            font-weight: bold;
+            margin: 0; padding: 0; line-height: 1.1;
+            word-wrap: break-word;
+        }
+        .kpi-card.status-atingido .kpi-value { color: #28a745; }
+        .kpi-card.status-nao-atingido .kpi-value { color: #dc3545; }
+        .kpi-card.status-critico .kpi-value { color: #ffc107; }
+        .kpi-card.status-ok .kpi-value { color: #17a2b8; }
+        .kpi-card.status-info .kpi-value { color: #343a40; }
+        
+        .kpi-label {
+            font-size: 1em;
+            font-weight: 500;
+            color: #495057;
+            margin-top: 5px;
+        }
+        .kpi-sublabel {
+            font-size: 0.8em;
+            color: #6c757d;
+            margin-top: 2px;
+        }
+        .kpi-value-small {
+           font-size: 1.6em;
+        }
+    </style>
+</head>
+<body>
+    <div class="kpi-grid">
+        {% for kpi in kpis_data %}
+        <div class="kpi-card status-{{ kpi.status }}">
+             {% if kpi.label == 'Principal Ofensor' %}
+                <p class="kpi-value kpi-value-small">{{ kpi.value }}</p>
+            {% else %}
+                <p class="kpi-value">{{ kpi.value }}</p>
+            {% endif %}
+            <p class="kpi-label">{{ kpi.label }}</p>
+            <p class="kpi-sublabel">{{ kpi.sublabel }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
