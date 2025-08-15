@@ -1,4 +1,4 @@
-<div class="report-module-instance">
+<div class="report-module-instance" {% if new_page %}style="page-break-before: always;"{% endif %}>
     <h2 class="first">{{ title or 'Análise de Disponibilidade (SLA)' }}</h2>
     <div class="summary-box">
         {% if data.hosts_com_falha_sla == 0 %}<p style="text-align:center; font-weight:bold; color: #2e7d32;">Parabéns! 100% dos {{ data.total_hosts }} hosts analisados atingiram a meta de disponibilidade.</p>

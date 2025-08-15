@@ -1,4 +1,4 @@
-<div class="report-module-instance">
+<div class="report-module-instance" {% if new_page %}style="page-break-before: always;"{% endif %}>
     <h2>{{ title or 'Inventário de Hosts' }}</h2>
     {{ data.tabela | safe }}
 </div>

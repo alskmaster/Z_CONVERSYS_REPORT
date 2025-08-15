@@ -1,4 +1,4 @@
-<div class="report-module-instance">
+<div class="report-module-instance" {% if new_page %}style="page-break-before: always;"{% endif %}>
     {% if title %}<h2>{{ title }}</h2>{% endif %}
     <div>{{ data.content|safe }}</div>
 </div>

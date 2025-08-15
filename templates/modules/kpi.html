@@ -1,6 +1,34 @@
-<div class="report-module-instance">
+<div class="report-module-instance" {% if new_page %}style="page-break-before: always;"{% endif %}>
+
     <h2 class="first">{{ title or 'Indicadores Chave de Disponibilidade (KPIs)' }}</h2>
-    <div class="kpi-container">
-        {{ data.kpis|safe }}
-    </div>
+    
+    <hr>
+    <h3>INÍCIO DA DEPURAÇÃO</h3>
+    
+    <h4>1. Verificando a variável 'data'</h4>
+    <p>A variável 'data' existe e contém:</p>
+    <pre style="background-color: #eee; padding: 10px; border: 1px solid #ccc;">{{ data | tojson(indent=2) }}</pre>
+
+    <h4>2. Testando o loop</h4>
+    {% if data.kpis and data.kpis is iterable %}
+        <p style="color: green; font-weight: bold;">SUCESSO: 'data.kpis' é uma lista ou objeto iterável.</p>
+        <p>Número de KPIs encontrados: {{ data.kpis | length }}</p>
+        <ul>
+        {% for kpi in data.kpis %}
+            <li>
+                <strong>Label:</strong> {{ kpi.label }} | 
+                <strong>Value:</strong> {{ kpi.value }} | 
+                <strong>Status:</strong> {{ kpi.status }}
+            </li>
+        {% else %}
+            <p style="color: orange; font-weight: bold;">AVISO: O loop funcionou, mas a lista de KPIs está vazia.</p>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p style="color: red; font-weight: bold;">ERRO: 'data.kpis' não é uma lista ou não existe. Verifique o main.py.</p>
+    {% endif %}
+
+    <h3>FIM DA DEPURAÇÃO</h3>
+    <hr>
+
 </div>

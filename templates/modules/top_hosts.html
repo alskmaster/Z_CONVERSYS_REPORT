@@ -1,4 +1,4 @@
-<div class="report-module-instance">
+<div class="report-module-instance" {% if new_page %}style="page-break-before: always;"{% endif %}>
     <h2>{{ title or 'Top 10 Hosts com Maior Indisponibilidade' }}</h2>
     <div class="chart-container">
         {% if data.grafico %}<img src="data:image/png;base64,{{ data.grafico }}">
