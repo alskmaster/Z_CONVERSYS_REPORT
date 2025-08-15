@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 # ==============================================================================
-# ZABBIX REPORTER - ENTERPRISE EDITION v20.9 FINAL (Report Builder)
+# ZABBIX REPORTER - ENTERPRISE EDITION v20.9.2 FINAL (Correção de Geração de PDF)
 #
 # Autor: Marcio Bernardo, Conversys IT Solutions
 # Data: 15/08/2025
-# Descrição: Versão final com construtor de relatórios modular e dinâmico.
-#            Permite montar relatórios personalizados com módulos de dados e
-#            conteúdo customizado, com descoberta automática de
-#            compatibilidade.
+# Descrição: Corrigido o método de montagem de PDF e restaurada a lógica
+#            de atualização de status no frontend.
 # ==============================================================================
 
 # --- Importações Essenciais ---
@@ -559,7 +557,7 @@ class ReportGenerator:
         
         self._update_status("Coletando hosts do cliente...")
         all_hosts = self.get_hosts(group_ids)
-        if not all_hosts: return None, f"Nenhum host encontrado para os grupos Zabbix associados ao cliente {client.name}."
+        if not all_hosts: return None, f"Nenhum host encontrado para os grupos Zabbix do cliente {client.name}."
 
         report_layout = json.loads(report_layout_json)
         
@@ -625,12 +623,13 @@ class ReportGenerator:
                         html_part = render_template('modules/mem.html', title=custom_title, data=module_data)
 
                 elif module_type in ['traffic_in', 'traffic_out']:
-                    if 'traffic_data' not in cached_data:
-                        interface = module.get('interface')
-                        cached_data['traffic_data'], error_msg = self._collect_traffic_data(all_hosts, period, interface)
+                    interface = module.get('interface')
+                    traffic_cache_key = f"traffic_data_{interface or 'all'}"
+                    if traffic_cache_key not in cached_data:
+                        cached_data[traffic_cache_key], error_msg = self._collect_traffic_data(all_hosts, period, interface)
                         if error_msg: return None, error_msg
                     
-                    data = cached_data['traffic_data']
+                    data = cached_data[traffic_cache_key]
                     if module_type == 'traffic_in':
                         df_net_in = data['df_net_in']
                         module_data = { 'tabela': df_net_in.to_html(classes='table', index=False, float_format='%.4f'), 'grafico': self._generate_multi_bar_chart(df_net_in, 'Tráfego de Entrada (Mbps)', 'Mbps', ['#ffc266', '#ffa31a', '#e68a00']) }
@@ -653,6 +652,7 @@ class ReportGenerator:
 
             except Exception as e:
                 app.logger.error(f"Erro ao processar módulo {module_type}: {e}")
+                traceback.print_exc()
                 return None, f"Falha ao processar módulo {module_type}."
 
         dados_gerais['report_content'] = "".join(final_html_parts)
@@ -666,23 +666,27 @@ class ReportGenerator:
         self._update_status("Montando o relatório final...")
         merger = PdfWriter()
         
+        # Lógica de montagem de PDF corrigida
         if system_config.report_cover_path and os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], system_config.report_cover_path)):
             try:
                 with open(os.path.join(app.config['UPLOAD_FOLDER'], system_config.report_cover_path), "rb") as f:
-                    merger.append(f)
+                    cover_pdf = PdfReader(f)
+                    for page in cover_pdf.pages: merger.add_page(page)
             except PyPDF2Errors.PdfReadError:
                  return None, "Arquivo de capa corrompido ou inválido."
 
         try:
             with open(miolo_pdf_path, "rb") as f:
-                merger.append(f)
+                miolo_pdf = PdfReader(f)
+                for page in miolo_pdf.pages: merger.add_page(page)
         except PyPDF2Errors.PdfReadError:
              return None, "Ocorreu um erro interno ao gerar o corpo do relatório."
 
         if system_config.report_final_page_path and os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], system_config.report_final_page_path)):
             try:
                 with open(os.path.join(app.config['UPLOAD_FOLDER'], system_config.report_final_page_path), "rb") as f:
-                    merger.append(f)
+                    final_pdf = PdfReader(f)
+                    for page in final_pdf.pages: merger.add_page(page)
             except PyPDF2Errors.PdfReadError:
                 return None, "Arquivo de página final corrompido ou inválido."
 
@@ -792,7 +796,6 @@ def run_generation_in_thread(app_context, task_id, client_id, ref_month, user_id
                 return
 
             generator = ReportGenerator(config_zabbix, task_id)
-            # A interface_name é extraída do JSON dentro do generate agora
             pdf_path, error = generator.generate(client, ref_month, system_config, author, report_layout_json)
 
             if error:

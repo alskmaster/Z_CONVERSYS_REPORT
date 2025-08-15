@@ -2,9 +2,23 @@
 {% block title %}Gerar Relatório{% endblock %}
 {% block content %}
 <style>
-    #report-layout-container .report-module { border: 1px solid #dee2e6; border-radius: .375rem; padding: 1rem; margin-bottom: 0.5rem; background-color: #fff; }
-    #report-layout-container .module-header { display: flex; justify-content: space-between; align-items: center; cursor: grab; }
-    #available-modules-container .btn { margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    #report-layout-container .report-module {
+        border: 1px solid #dee2e6;
+        border-radius: .375rem;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        background-color: #fff;
+    }
+    #report-layout-container .module-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: grab;
+    }
+    #available-modules-container .btn {
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
 </style>
 
 <div class="row">
@@ -113,9 +127,10 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     layoutContainer.addEventListener('click', function(e) {
-        if (e.target.closest('.remove-module-btn')) {
-            e.target.closest('.report-module').remove();
-            if (layoutContainer.children.length <= 1) { // 1 por causa do placeholder
+        const removeButton = e.target.closest('.remove-module-btn');
+        if (removeButton) {
+            removeButton.closest('.report-module').remove();
+            if (layoutContainer.querySelectorAll('.report-module').length === 0) {
                  if (layoutPlaceholder) layoutPlaceholder.style.display = 'block';
             }
         }
@@ -157,7 +172,6 @@ document.addEventListener("DOMContentLoaded", function() {
     clientIdSelect.addEventListener('change', updateAvailableModules);
     if(clientIdSelect.value) updateAvailableModules();
 
-    // Lógica de Geração
     const form = document.getElementById('report-form');
     const layoutInput = document.getElementById('report_layout_input');
     const btnText = submitBtn.querySelector('.btn-text');
@@ -165,6 +179,39 @@ document.addEventListener("DOMContentLoaded", function() {
     const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
     const statusMessage = document.getElementById('status-message');
     let intervalId;
+    
+    function resetForm() {
+        btnText.innerHTML = '<i class="bi bi-play-circle"></i> Gerar e Baixar Relatório';
+        btnSpinner.classList.add('d-none');
+        submitBtn.disabled = false;
+        if (intervalId) clearInterval(intervalId);
+        progressModal.hide();
+    }
+
+    function checkStatus(taskId) {
+        try {
+            fetch(`/report_status/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    statusMessage.textContent = data.status || 'Processando...';
+                    if (data.status.startsWith('Erro')) {
+                        clearInterval(intervalId);
+                        alert(data.status);
+                        resetForm();
+                    } else if (data.status === 'Concluído') {
+                        clearInterval(intervalId);
+                        statusMessage.textContent = 'Sucesso! Iniciando o download...';
+                        window.location.href = `/download_final_report/${taskId}`;
+                        setTimeout(resetForm, 3000);
+                    }
+                });
+        } catch (error) {
+            console.error('Erro ao verificar status:', error);
+            statusMessage.textContent = 'Erro de comunicação.';
+            clearInterval(intervalId);
+            setTimeout(resetForm, 2000);
+        }
+    }
 
     submitBtn.addEventListener('click', function() {
         const layout = [];
@@ -188,7 +235,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
         layoutInput.value = JSON.stringify(layout);
         
-        // Inicia a geração
         btnText.textContent = 'Gerando...';
         btnSpinner.classList.remove('d-none');
         submitBtn.disabled = true;
@@ -210,9 +256,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 resetForm();
             });
     });
-
-    function resetForm() { /* ... Lógica de reset ... */ }
-    function checkStatus(taskId) { /* ... Lógica de verificação de status ... */ }
 });
 </script>
 {% endblock %}
