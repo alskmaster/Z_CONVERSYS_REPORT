@@ -340,7 +340,7 @@ class ReportGenerator:
         all_problems = [p for p in all_group_events if p.get('source') == '0' and p.get('object') == '0' and p.get('value') == '1']
         df_top_incidents = self._count_problems_by_host(all_problems, all_hosts).head(10)
         
-        df_sla_problems = df_sla[df_sla['SLA (%)'] < 100.0].copy()
+        df_sla_problems = df_sla # Alterado para usar todos os dados de SLA
         avg_sla = df_sla['SLA (%)'].mean() if not df_sla.empty else 100.0
         principal_ofensor = df_top_incidents.iloc[0]['Host'] if not df_top_incidents.empty else "Nenhum"
         
@@ -479,8 +479,11 @@ class ReportGenerator:
         for _, row in df.iterrows():
             sla_val = row['SLA (%)']
             classe_css = ''
-            if sla_val < sla_goal: classe_css = 'sla-critico'
-            elif sla_val < 99.9: classe_css = 'sla-atencao'
+            if sla_val < 100.0: # Destaque qualquer valor menor que 100%
+                if sla_val < sla_goal:
+                    classe_css = 'sla-critico'
+                else:
+                    classe_css = 'sla-atencao'
             html += f"<tr class='{classe_css}'><td>{row['Host']}</td><td>{row['IP']}</td><td>{row['Tempo Indisponível']}</td><td>{f'{sla_val:.2f}'.replace('.', ',')}</td></tr>"
         return html + '</tbody></table>'
 
@@ -580,7 +583,7 @@ class ReportGenerator:
             
             try:
                 html_part = ""
-                if module_type in ['sla', 'kpi', 'top_hosts', 'top_problems']:
+                if module_type in ['kpi', 'sla', 'top_hosts', 'top_problems']:
                     if 'availability_data' not in cached_data:
                         self._update_status("Coletando dados de disponibilidade...")
                         cached_data['availability_data'], error_msg = self._collect_availability_data(all_hosts, period, sla_goal)
@@ -596,13 +599,13 @@ class ReportGenerator:
                         module_data = {
                             'tabela_sla_problemas': self._generate_html_sla_table(df_sla_problems, sla_goal),
                             'total_hosts': len(all_hosts),
-                            'hosts_com_falha_sla': df_sla_problems.shape[0]
+                            'hosts_com_falha_sla': df_sla_problems[df_sla_problems['SLA (%)'] < 100].shape[0]
                         }
                         html_part = render_template('modules/sla.html', title=custom_title, data=module_data)
                     
                     elif module_type == 'top_hosts':
                         df_sla_problems = data['df_sla_problems']
-                        df_top_downtime = df_sla_problems.sort_values(by='SLA (%)', ascending=True).head(10)
+                        df_top_downtime = df_sla_problems[df_sla_problems['SLA (%)'] < 100].sort_values(by='SLA (%)', ascending=True).head(10)
                         df_top_downtime['soma_duracao_segundos'] = df_top_downtime['Tempo Indisponível'].apply(lambda x: pd.to_timedelta(x).total_seconds())
                         df_top_downtime['soma_duracao_horas'] = df_top_downtime['soma_duracao_segundos'] / 3600
                         module_data = { 'grafico': self._generate_chart(df_top_downtime, 'soma_duracao_horas', 'Host', 'Top 10 Hosts com Maior Indisponibilidade', 'Total de Horas Indisponível', system_config.secondary_color) }
