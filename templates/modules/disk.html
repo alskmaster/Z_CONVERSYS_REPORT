@@ -1,0 +1,8 @@
+<div class="report-module-instance">
+  <h2>{{ title or 'Uso de Disco (Pior FS por Host)' }}</h2>
+  <div class="chart-container">
+    {% if data.grafico %}<img src="data:image/png;base64,{{ data.grafico }}">
+    {% else %}<p><i>Gráfico de disco indisponível.</i></p>{% endif %}
+  </div>
+  {{ data.tabela | safe }}
+</div>

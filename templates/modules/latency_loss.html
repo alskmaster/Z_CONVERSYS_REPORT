@@ -1,0 +1,17 @@
+<div class="report-module-instance">
+  <h2>{{ title or 'Latência & Perda (Ping)' }}</h2>
+
+  <h3>Latência (ms)</h3>
+  <div class="chart-container">
+    {% if data.grafico_lat %}<img src="data:image/png;base64,{{ data.grafico_lat }}">
+    {% else %}<p><i>Gráfico de latência indisponível.</i></p>{% endif %}
+  </div>
+  {{ data.tabela_lat | safe }}
+
+  <h3 style="margin-top:24px;">Perda (%)</h3>
+  <div class="chart-container">
+    {% if data.grafico_loss %}<img src="data:image/png;base64,{{ data.grafico_loss }}">
+    {% else %}<p><i>Gráfico de perda indisponível.</i></p>{% endif %}
+  </div>
+  {{ data.tabela_loss | safe }}
+</div>
