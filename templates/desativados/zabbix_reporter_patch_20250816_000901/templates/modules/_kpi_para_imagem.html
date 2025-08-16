@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; margin:0; padding:0; }
+  .kpi-grid { display: grid; grid-template-columns: 1fr; gap: 8px; width: 520px; padding: 10px; }
+  .kpi { border:1px solid #e0e0e0; border-radius:6px; padding:12px; background:#fafafa; text-align:center; }
+  .kpi .value { font-size:26px; font-weight:700; color:#0d47a1; }
+  .kpi .label { font-size:14px; color:#333; margin-top:4px; }
+  .kpi .sublabel { font-size:11px; color:#666; margin-top:3px; }
+  .status-atingido .value { color:#2e7d32; }
+  .status-nao-atingido .value { color:#c62828; }
+</style>
+</head>
+<body>
+  <div class="kpi-grid">
+    {% for k in kpis_data %}
+      <div class="kpi status-{{ k.status|default('info') }}">
+        <div class="value">{{ k.value }}</div>
+        <div class="label">{{ k.label }}</div>
+        <div class="sublabel">{{ k.sublabel }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</body></html>
